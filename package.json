@@ -1,0 +1,15 @@
+{
+  "name": "staticade",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "node tools/run-tests.mjs node",
+    "test:browser": "node tools/run-tests.mjs browser",
+    "test:all": "node tools/run-tests.mjs all",
+    "serve": "node tools/serve.mjs 8770"
+  },
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "playwright": "^1.64.1"
+  }
+}

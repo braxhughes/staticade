@@ -1,0 +1,19 @@
+# Copy to server/wrangler.toml at go-live (see server/README.md). No secrets live here.
+# Secrets are set with `npx wrangler secret put <NAME>`, never in this file:
+#   DAILY_SECRET  required in production (card 3c): the Daily's seed and run tickets. At least 32 characters.
+#   ADMIN_TOKEN   optional: turns on /admin/release and /admin/hide. At least 24 characters.
+name = "arcade-lb"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+# Needs Workers Paid: one replay check costs about 0.03 to 1 s of CPU. 30 s is the paid default; this caps it lower.
+[limits]
+cpu_ms = 10000
+
+[[d1_databases]]
+binding = "DB"
+database_name = "arcade-lb"
+database_id = "PASTE-THE-ID-FROM-wrangler-d1-create"
+
+[vars]
+ALLOWED_ORIGIN = "https://staticade.com"

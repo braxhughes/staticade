@@ -1,0 +1,6 @@
+node_modules/
+.claude/worktrees/
+shots/
+.playwright-mcp/
+.DS_Store
+server/wrangler.toml

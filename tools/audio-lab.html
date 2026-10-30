@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Starfall Audio Lab</title>
+<style>
+  :root { --bg:#0a0a14; --panel:#12122200; --line:#2a2a44; --ink:#e8e6f0; --dim:#8a88a8; --amber:#ffb84a; --teal:#4adbc8; --rose:#ff5d7a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:13px/1.4 ui-monospace,Menlo,Consolas,monospace; }
+  header { position:sticky; top:0; z-index:2; background:#0e0e1c; border-bottom:1px solid var(--line); padding:10px 16px; display:flex; flex-wrap:wrap; gap:14px; align-items:center; }
+  h1 { margin:0; font-size:15px; letter-spacing:.14em; color:var(--amber); }
+  label { color:var(--dim); display:flex; gap:6px; align-items:center; }
+  input[type=range] { accent-color:var(--amber); width:120px; }
+  button { background:#1a1a30; color:var(--ink); border:1px solid var(--line); border-radius:4px; padding:5px 10px; font:inherit; cursor:pointer; }
+  button:hover { border-color:var(--amber); }
+  button.on { background:var(--amber); color:#14101a; border-color:var(--amber); }
+  #now { color:var(--teal); min-width:260px; }
+  main { display:grid; grid-template-columns: 1fr 1fr; gap:16px; padding:14px 16px 30px; }
+  section h2 { margin:0 0 8px; font-size:12px; letter-spacing:.14em; color:var(--dim); text-transform:uppercase; }
+  .row { display:flex; align-items:center; gap:10px; padding:4px 6px; border-bottom:1px solid #1a1a2e; }
+  .row:hover { background:#14142a; }
+  .row .nm { flex:1; }
+  .row .meta { color:var(--dim); font-size:11px; }
+  .tag { font-size:10px; padding:1px 5px; border:1px solid var(--line); border-radius:3px; color:var(--dim); }
+  .sfxgrid { display:flex; flex-wrap:wrap; gap:6px; }
+  .opts { color:var(--dim); margin:8px 0; display:flex; gap:14px; flex-wrap:wrap; }
+  @media (max-width:760px) { main { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>STARFALL AUDIO LAB</h1>
+  <button id="mute">Mute: off</button>
+  <button id="stop">Stop music</button>
+  <label>Intensity <input id="int" type="range" min="0" max="1" step="0.01" value="0.5"><span id="intv">0.50</span></label>
+  <label>Music <input id="vm" type="range" min="0" max="1" step="0.01" value="0.8"></label>
+  <label>SFX <input id="vs" type="range" min="0" max="1" step="0.01" value="0.9"></label>
+  <span id="now">nothing playing</span>
+</header>
+<main>
+  <section><h2>Music (click to play, intensity adds layers)</h2><div id="tracks"></div></section>
+  <section>
+    <h2>Sound effects</h2>
+    <div class="opts">
+      <label>Chain (for chainTick) <input id="chain" type="range" min="1" max="11" step="1" value="1"><span id="chainv">1</span></label>
+      <label>Kill kind <select id="kind"></select></label>
+    </div>
+    <div class="sfxgrid" id="sfx"></div>
+  </section>
+</main>
+<script type="module">
+import { createAudio, trackDuration } from '../engine/audio.js';
+import { TRACKS, TRACK_IDS } from '../games/starfall/music.js';
+import { SFX, SFX_NAMES, KILL_KINDS } from '../games/starfall/sfx.js';
+
+const audio = createAudio({ tracks: TRACKS, sfx: SFX });
+window.LAB = { audio, TRACKS, SFX };
+const $ = (id) => document.getElementById(id);
+let muted = false, playing = null;
+
+function play(id) {
+  audio.unlock();
+  audio.setIntensity(+$('int').value);
+  audio.playMusic(id, { fadeMs: 250 });
+  playing = id;
+  document.querySelectorAll('#tracks button').forEach((b) => b.classList.toggle('on', b.dataset.id === id));
+}
+for (const id of TRACK_IDS) {
+  const t = TRACKS[id];
+  const row = document.createElement('div');
+  row.className = 'row';
+  const dur = trackDuration(t).toFixed(0);
+  row.innerHTML = '<button data-id="' + id + '">Play</button><span class="nm"><b>' + id + '</b> ' + t.name +
+    '<div class="meta">' + t.key + ' / ' + t.bpm + ' BPM (' + t.framesPerBeat + ' f/beat)' + (t.meter ? ' / ' + t.meter : '') + ' / ' + dur + 's ' +
+    (t.loop === false ? 'one-shot' : 'loops') + '<br>' + t.mood + '</div></span>';
+  row.querySelector('button').onclick = () => play(id);
+  $('tracks').appendChild(row);
+}
+for (const n of SFX_NAMES) {
+  const b = document.createElement('button');
+  b.textContent = n;
+  b.onclick = () => {
+    audio.unlock();
+    audio.sfx(n, { chain: +$('chain').value, kind: $('kind').value, alt: Math.random() < 0.5 });
+  };
+  $('sfx').appendChild(b);
+}
+for (const k of KILL_KINDS) { const o = document.createElement('option'); o.textContent = k; $('kind').appendChild(o); }
+$('chain').oninput = () => { $('chainv').textContent = $('chain').value; };
+$('int').oninput = () => { $('intv').textContent = (+$('int').value).toFixed(2); audio.setIntensity(+$('int').value); };
+$('vm').oninput = $('vs').oninput = () => audio.setVolume(+$('vm').value, +$('vs').value);
+$('mute').onclick = () => { muted = !muted; audio.setMuted(muted); $('mute').textContent = 'Mute: ' + (muted ? 'ON' : 'off'); $('mute').classList.toggle('on', muted); };
+$('stop').onclick = () => { audio.stopMusic({ fadeMs: 300 }); playing = null; document.querySelectorAll('#tracks button').forEach((b) => b.classList.remove('on')); };
+setInterval(() => {
+  const c = audio.current();
+  if (!c || !audio.ctx) { $('now').textContent = playing ? 'starting ' + playing : 'nothing playing'; return; }
+  const beat = audio.beatAt();
+  $('now').textContent = c.id + '  bar ' + (Math.floor(Math.max(0, beat) * c.stepsPerBeat / c.stepsPerBar) + 1) + '  beat ' + Math.max(0, beat).toFixed(1);
+}, 100);
+</script>
+</body>
+</html>
