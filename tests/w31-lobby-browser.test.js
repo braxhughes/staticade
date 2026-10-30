@@ -1,4 +1,4 @@
-// w31 lobby v2, the browser half: the real index.html in headless Chrome (playwright), against a seeded dev board
+// Lobby v2, the browser half: the real index.html in headless Chrome (playwright), against a seeded dev board
 // (server/dev-server.mjs on a sqlite file we fill with board rows), the dev board down, and no remote board at all.
 // A small counting proxy in front of the dev server records every /board and /rank request.
 import { describe, test, before, after } from 'node:test';

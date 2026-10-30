@@ -23,7 +23,7 @@ function play(seed, mode, frames = 700) {
 }
 const claim = (replay, seed, mode, dayKey, version = GAME_VERSION) => ({ replay, seed, mode, dayKey, version });
 
-// ---------- MED1: the verifier ----------
+// ---------- the verifier ----------
 test('verifier: a real free run and a real daily run still verify to their score', () => {
   const v = makeVerifyReplay({ now: () => NOW });
   const f = play(77, 'arcade'), ds = dailySeed('2026-10-28'), d = play(ds, 'daily');
@@ -94,7 +94,7 @@ test('leaderboard with the verifier: bad claims are rejected, a good one is stor
   assert.equal(today.length, 1, 'the daily submit carries dayKey, so it is on the day board');
 });
 
-// ---------- MED2: Shift does not move the name slot ----------
+// ---------- Shift does not move the name slot ----------
 test('name entry: Shift does not advance; Fire does; Shift then B gives B in slot 0', () => {
   const e = createEntry('AAA');
   e.step(M_ALT, 0);
@@ -111,7 +111,7 @@ test('name entry: Shift does not advance; Fire does; Shift then B gives B in slo
   const g = createEntry('AAA'); g.step(M_FIRE, 0); g.step(M_BACK, 0); assert.equal(g.pos, 0, 'Back still goes back');
 });
 
-// ---------- MED3: mutants ----------
+// ---------- mutants ----------
 test('todayUTC: UTC day flips exactly at 00:00:00.000 UTC', () => {
   assert.equal(todayUTC(Date.UTC(2026, 9, 28, 23, 59, 59, 999)), '2026-10-28');
   assert.equal(todayUTC(Date.UTC(2026, 9, 29, 0, 0, 0, 0)), '2026-10-29');

@@ -1,4 +1,4 @@
-// w17 tests-only slice, group 2 (audio-bind half): S13a review survivors N, Q and AI, driven straight through
+// Test gaps, group 2 (audio-bind half): surviving audio mutants N, Q and AI, driven straight through
 // createAudioBind on a fake AudioContext (no browser). N: jingle() while muted. Q: the jingle hands back to the wanted
 // track when it ends. AI: sfxName (menu / cabinet sounds) is gated by unlocked, muted, paused and hidden, each on its own.
 import test, { afterEach } from 'node:test';

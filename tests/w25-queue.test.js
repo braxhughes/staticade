@@ -1,4 +1,4 @@
-// Card 3b (w25-client): the retry queue for remote submits (games/starfall/submit-queue.js), the remote client's
+// the retry queue for remote submits (games/starfall/submit-queue.js), the remote client's
 // timeout and HTTP status (server/client.js), the read gate, and the text helpers in games/starfall/modes.js.
 // Node only. The browser side (real page + server/dev-server.mjs) is tests/w25-client-browser.test.js and
 // tests/w25-states-browser.test.js.
@@ -308,7 +308,7 @@ test('modes.body is exactly what modes.submit sends (the queue keeps the same bo
   assert.equal(hashReplay(b.replay), hashReplay(FREE.replay));
 });
 
-// ---------- fix round 3b-fix: LOW4, LOW5, LOW6 ----------
+// ---------- more queue cases ----------
 test('LOW4: a 500 verify_disagree and a non-JSON 4xx (a 413 HTML page) are never retried and show NOT SENT once', async () => {
   const cases = [[err('verify_disagree', 500), 'NOT SENT: VERIFY DISAGREE'], [err('server_error', 413, 'leaderboard server sent 413 without JSON'), 'NOT SENT: HTTP 413'],
     [err('server_error', 400), 'NOT SENT: HTTP 400'], [err('server_error', 404), 'NOT SENT: HTTP 404']];

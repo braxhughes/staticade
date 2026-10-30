@@ -2,8 +2,8 @@
 --   cd server && npx wrangler d1 execute arcade-lb --remote --file=schema.sql
 -- Every statement is IF NOT EXISTS, so applying it again is safe.
 
--- Boards (w22, HIGH2): one row per player per board, the player's best run on it. A board is 'all',
--- 'season:<id>' or 'daily:YYYY-MM-DD', kept per game and major game version (ver, MED8). Reads are a top-N walk of
+-- Boards: one row per player per board, the player's best run on it. A board is 'all',
+-- 'season:<id>' or 'daily:YYYY-MM-DD', kept per game and major game version (ver). Reads are a top-N walk of
 -- board_top, so their cost does not grow with the board. At most BOARD_CAP rows per board (server/boards.js).
 CREATE TABLE IF NOT EXISTS board (
   game  TEXT NOT NULL,
@@ -106,7 +106,7 @@ CREATE INDEX IF NOT EXISTS ratings_avg ON ratings (game, ver, season, avg5);
 CREATE INDEX IF NOT EXISTS ratings_pid ON ratings (game, ver, pid, season);
 CREATE INDEX IF NOT EXISTS season_runs_entry ON season_runs (entry);
 
--- The percentile field as counts (w22 fix, MED1), so a submit or /rank reads a few hundred rows at most instead of
+-- The percentile field as counts, so a submit or /rank reads a few hundred rows at most instead of
 -- one row per rated player. The counts live in board_size (a table of counts kept by triggers) under keys that
 -- start 'rank:', which no board name can (boards are 'all', 'season:<id>', 'daily:<day>'). They are kept by the
 -- triggers below on every change to ratings, in the same statement, so they cannot drift from ratings (a test
@@ -158,7 +158,7 @@ CREATE TABLE IF NOT EXISTS hidden (
   rows  INTEGER NOT NULL
 ) WITHOUT ROWID;
 
--- Not used by the Worker since w22 (boards are rows above, and there is no global lock any more). Kept because
+-- Not used by the Worker any more (boards are rows above, and there is no global lock any more). Kept because
 -- server/d1-adapter.js d1Storage, a general key-value adapter with a lease lock, still works on them.
 CREATE TABLE IF NOT EXISTS kv (
   k TEXT PRIMARY KEY NOT NULL,
@@ -178,7 +178,7 @@ CREATE TABLE IF NOT EXISTS results (
   entry TEXT,             -- the stored entry id once the submit finished
   t     INTEGER NOT NULL, -- ms when claimed
   sig   TEXT,             -- JSON [frame, points, ...] of the first 128 scoring events (server/dedupe.js)
-  seq   INTEGER,          -- claim order (w22): a near copy is held only if it matches an EARLIER claim, so two
+  seq   INTEGER,          -- claim order: a near copy is held only if it matches an EARLIER claim, so two
                           -- copies sent at the same moment need no lock (server/d1-adapter.js findNearRun)
   PRIMARY KEY (game, board, hash, score)
 ) WITHOUT ROWID;
@@ -216,7 +216,7 @@ CREATE TABLE IF NOT EXISTS rate (
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS rate_win ON rate (win);
 
--- d1Storage's lease lock (see kv above). The Worker no longer takes any lock (w22, MED4).
+-- d1Storage's lease lock (see kv above). The Worker no longer takes any lock.
 CREATE TABLE IF NOT EXISTS locks (
   name  TEXT PRIMARY KEY NOT NULL,
   owner TEXT NOT NULL,

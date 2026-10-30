@@ -1,7 +1,7 @@
-// w17 tests-only follow-up: closes the cold-review MEDs and cheap LOWs of w17-tests (Node only; the browser one is in
-// w17-gaps-fix-browser.test.js). MED1: STARLIGHT state resets through the REAL stage change (stage 4 -> stage 9), not a hand
-// call to setup. MED2: exact-boundary sides for HOUND_NEAR (< 16), HOUND_HIT (>= 7) and the refall (> H + 16).
-// LOW2: playSfx works on a live binding (positive control for the gate test). LOW4: the toss blip starts at once.
+// Follow-up checks for the test-gap files (Node only; the browser one is in
+// w17-gaps-fix-browser.test.js). STARLIGHT state resets through the REAL stage change (stage 4 -> stage 9), not a hand
+// call to setup. Exact-boundary sides for HOUND_NEAR (< 16), HOUND_HIT (>= 7) and the refall (> H + 16).
+// playSfx works on a live binding (positive control for the gate test). The toss blip starts at once.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSim } from '../games/starfall/sim.js';
@@ -18,7 +18,7 @@ import { SFX } from '../games/starfall/sfx.js';
 const IDLE = packWord(0, false, false, false, false, 0);
 const IDLE2 = 128;
 
-// ---------------- MED1: real second STARLIGHT stage ----------------
+// ---------------- real second STARLIGHT stage ----------------
 test('MED1: one kill in STARLIGHT stage 4, then the real stage change into STARLIGHT stage 9 starts with every kill count at zero', () => {
   const sim = createSim({ seed: 1, mode: 'stage4' }), S = sim.ctx, L = S.sl;
   while (sim.state !== 'play') sim.step(IDLE);
@@ -41,7 +41,7 @@ test('MED1: one kill in STARLIGHT stage 4, then the real stage change into STARL
   assert.deepEqual(Array.from(L.grade), [0, 0, 0, 0, 0, 0]);
 });
 
-// ---------------- MED2: boundaries ----------------
+// ---------------- boundaries ----------------
 const step = (sim, n = 1) => { for (let i = 0; i < n && !sim.done; i++) { sim.step(IDLE2); sim.clearEvents(); } return sim; };
 const toPlay = sim => { while (sim.state !== 'play') step(sim); return sim; };
 const mk = (stage, seed = 1, god = true) => { const sim = createSim({ seed, mode: 'stage' + stage }); if (god) sim.setGod(true); return sim; };
@@ -101,7 +101,7 @@ test('refall exact: a fallen survivor at exactly y = H + 16 keeps falling (> not
   assert.notEqual(a.st, 'join');
 });
 
-// ---------------- LOW2 / LOW4 ----------------
+// ---------------- live binding and toss blip ----------------
 function mockCtx() {
   const param = () => ({ value: 0, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {}, cancelScheduledValues() {}, setTargetAtTime() {} });
   const PARAMS = new Set(['gain', 'frequency', 'detune', 'pan', 'delayTime', 'Q', 'threshold', 'knee', 'ratio', 'attack', 'release']);

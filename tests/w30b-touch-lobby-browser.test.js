@@ -1,7 +1,7 @@
-// w30b: the touch-only LOBBY button on Starfall's pause screen. Through index.html in headless Chrome
+// the touch-only LOBBY button on Starfall's pause screen. Through index.html in headless Chrome
 // (system Chrome). Touch: a context with touch emulation; tapping LOBBY leaves (nothing submitted), a tap just outside it
 // and a tap in the middle resume. Desktop: the button is never drawn and the line is ESC: LOBBY   FIRE: RESUME.
-// Screenshots go to W30_SHOT_DIR when it is set (docs/w30).
+// Screenshots go to W30_SHOT_DIR when it is set.
 import { describe, test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

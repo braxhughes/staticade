@@ -1,5 +1,5 @@
 // Starfall v1 synthesized sound effects, moved here unchanged from the one-file v1.
-// The audio worker owns engine/audio.js; this file stays as-is until that lands.
+// Kept as it was when it moved here.
 const rnd = Math.random;
 
 export let AC = null, master = null, NB = null, muted = false;

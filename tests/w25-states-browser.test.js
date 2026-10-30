@@ -1,4 +1,4 @@
-// Card 3b (w25-client): every server state the player can hit, in the real page (headless Chrome, Playwright).
+// every server state the player can hit, in the real page (headless Chrome, Playwright).
 // The leaderboard server is faked with context routes on a free localhost port: the page uses the same client code
 // path as with the real server (server/client.js fetch). Scope items: 2 retry and refusal codes, 4 wrong_version,
 // 5 OFFLINE board and read rate, 6 daily timer, 7 storage warning, 8 null placements, 11 hooks; plus two tabs
@@ -246,7 +246,7 @@ describe('card 3b server states in the page', { concurrency: true }, () => {
     await g.ctx.close();
   });
 
-  // ---------- fix round 3b-fix ----------
+  // ---------- more server states ----------
   test('MED2 N5b: a null daily placement beside a numeric all-time one prints no null or undefined', async () => {
     const S = await fake();
     S.next = () => J(201, { ...OK201, placements: { all: 4, daily: null, season: 4 } });

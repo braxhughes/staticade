@@ -1,4 +1,4 @@
-// w10-s12-guard MED1: drives the real Starfall page in headless Chrome (Playwright, system Chrome) and pins the main.js
+// drives the real Starfall page in headless Chrome (Playwright, system Chrome) and pins the main.js
 // wiring that the Node tests cannot reach. Each scenario runs in its own browser context, all at once, so the whole file
 // takes well under a minute. Only window.SF hooks, the keyboard and three page-level spies (clock, audio, storage) are used.
 // Mutants this file kills: verifier off, no claim, claim during the intro, SF.start(n)

@@ -1,4 +1,4 @@
-// w10-s12-guard: review MED2 and LOWs for S12 that run in Node. New file; no existing test is touched.
+// Mode guard checks that run in Node.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { dailySeed } from '../engine/rng.js';
@@ -24,7 +24,7 @@ function finishedRun(seed = 77, mode = 'arcade') {
 const parts = r => r.split('~');
 const join = p => p.join('~');
 
-// ---------- MED2: one honest run is one string ----------
+// ---------- one honest run is one string ----------
 test('MED2: an honest finished run verifies; the five re-encodings of it are rejected', () => {
   const v = makeVerifyReplay({ now: () => NOW });
   const { sim, replay } = finishedRun();

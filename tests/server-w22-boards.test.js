@@ -1,4 +1,4 @@
-// w22 (card 3a): boards as SQL rows, the board cap, score 0, 3-letter names and the blocklist, POST /admin/hide,
+// boards as SQL rows, the board cap, score 0, 3-letter names and the blocklist, POST /admin/hide,
 // boards per major version, board caching, no global lock. Through worker.fetch(new Request(...), env) on the
 // node:sqlite D1 shim with real recorded runs, except where noted (seeding thousands of rows goes straight to
 // server/boards.js storeRun, the function the Worker calls, because re-simulating thousands of runs takes minutes).
@@ -294,8 +294,8 @@ test('MED4: no lock is taken: the locks table is never written, and submits for 
   assert.equal((await get(W, env, '/board?game=starfall&limit=10')).body.rows.length, RUNS.length);
 });
 
-// The w18 duplicate tests that use 4- and 5-letter names (THIEF, COPY) or score 0, rerun with 3-letter names and a
-// non-zero score, so the behaviour they pin stays covered while their edits wait (w22 report, "Test edits needed").
+// The older duplicate tests that use 4- and 5-letter names (THIEF, COPY) or score 0, rerun with 3-letter names and a
+// non-zero score, so the behaviour they pin stays covered while their edits wait.
 test('Q22 under the new rules: one-bit copies of a fetched replay are held, not stored; the board keeps one row', async () => {
   const env = await makeEnv();
   const W = createWorker();

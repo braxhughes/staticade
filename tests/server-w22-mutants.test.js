@@ -1,4 +1,4 @@
-// w22 continuation: tests for two mutants that survived the first table.
+// tests for two mutants that survived the first table.
 // (a) players.best upserted without MAX: a worse later run would lower the all-time best on /rank.
 // (b) the board_replaced trigger: when a player's better run replaces their row, the old run's replay must go
 //     once no board lists it (otherwise replays grow one per improvement, forever).

@@ -1,4 +1,4 @@
-// w17 tests-only slice, group 4: S.lives is part of stateHash; the V4 cues keep their length and release (duration and
+// Test gaps, group 4: S.lives is part of stateHash; the V4 cues keep their length and release (duration and
 // envelope were unpinned); tools/audio-check.mjs starts its own server on the one port its base URL uses (8772).
 import test from 'node:test';
 import assert from 'node:assert/strict';

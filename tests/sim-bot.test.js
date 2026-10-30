@@ -1,4 +1,4 @@
-// S11 balance bot gate (the balance band in docs/design.md, B.0): seeds 1-5 reach stage 16 in 34,000-46,000 frames
+// Balance bot gate (the balance band in docs/design.md, B.0): seeds 1-5 reach stage 16 in 34,000-46,000 frames
 // with at most 8 deaths, and the same seed gives the same hash twice.
 import test from 'node:test';
 import assert from 'node:assert/strict';

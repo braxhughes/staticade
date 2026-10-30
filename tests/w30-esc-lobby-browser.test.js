@@ -1,4 +1,4 @@
-// w30: Esc and Backspace take you back to the arcade lobby. Through the real entry point: index.html in headless Chrome
+// Esc and Backspace take you back to the arcade lobby. Through the real entry point: index.html in headless Chrome
 // (Playwright, system Chrome), Enter on the Starfall cabinet, then the keys. Counts rAF loops, window/document/canvas
 // listeners and audio contexts / playing sources across round trips. Screenshots go to W30_SHOT_DIR when it is set.
 import { describe, test, before, after } from 'node:test';

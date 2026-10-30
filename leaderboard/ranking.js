@@ -25,12 +25,12 @@
 //   Example: Gold spans 750..1199, so 750 = Gold III, 900 = Gold II, 1050 = Gold I.
 //
 // SEASONS
-//   28 days from the epoch 2026-10-30T00:00:00Z, launch day (LOW13). id = floor((t - epoch) / 28 days).
+//   28 days from the epoch 2026-10-30T00:00:00Z, launch day. id = floor((t - epoch) / 28 days).
 //   Season reset keeps half: at the start of a season your trophies are at least half of what you ended the last
 //   season with (a quarter after two seasons away, and so on). Your new season rating replaces it once it is higher.
 //   Example: ended at 2000 -> starts the next season at 1000 until the new best-5 rating beats 1000.
 
-export const SEASON_EPOCH_MS = Date.UTC(2026, 9, 30); // launch day, the one place it is set (LOW13)
+export const SEASON_EPOCH_MS = Date.UTC(2026, 9, 30); // launch day, the one place it is set
 export const SEASON_DAYS = 28;
 export const SEASON_MS = SEASON_DAYS * 86400000;
 export const TOP_RUNS = 5;
@@ -39,7 +39,7 @@ export const PCT_TROPHIES = Object.freeze([[0, 0], [0.25, 300], [0.5, 750], [0.7
 export const CARRY_KEEP = 0.5;
 
 // LEGACY (the per-run gain and loss before the best-5 rule). Nothing in the leaderboard uses these any more; they stay
-// exported only until the tests that pin them are edited (w22 report, "Test edits needed").
+// exported only until the tests that pin them are edited.
 export const MIN_BOARD = 5;
 export const SEASON_GAIN_CAP = 1200;
 export const RESET_THRESHOLD = 1200;

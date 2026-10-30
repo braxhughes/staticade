@@ -1,4 +1,4 @@
-// V4 fix (MED-3): FX_TETHER must look right, not just emit 10 dots. Kills these mutants of the tether burst in fx.js:
+// V4 fix: FX_TETHER must look right, not just emit 10 dots. Kills these mutants of the tether burst in fx.js:
 // speed 0 (no spread), life 38-39 (too long), gravity/fire colour modes, black colour, size 0, non-straight flight.
 import test from 'node:test';
 import assert from 'node:assert/strict';

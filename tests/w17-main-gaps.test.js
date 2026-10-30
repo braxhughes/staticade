@@ -1,4 +1,4 @@
-// w17 tests-only slice, group 2 (main.js half): S13a review survivors G, L, T and V, driven through the real starfall.html
+// Test gaps, group 2 (main.js half): surviving audio mutants G, L, T and V, driven through the real starfall.html
 // in headless Chrome. The page's sfx.js is served with a few extra lines appended (by this test, in memory: the file on
 // disk is untouched) that log the NAME of every sound the engine actually starts, so the tests can see which sound was
 // chosen, not just the last one (SF.audioLast() only keeps the latest).

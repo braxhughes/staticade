@@ -40,7 +40,7 @@ export function playScripted(seed, inSeed, how = 'script', mode = 'arcade', pref
   return { replay: rec.encode({ game: GAME_ID, version: GAME_VERSION, seed, mode }), score: sim.score, frames: sim.frame };
 }
 
-// A touch player (w22, HIGH1): every frame is a touch word whose steer-to x moves, so no two frames in a row are
+// A touch player: every frame is a touch word whose steer-to x moves, so no two frames in a row are
 // the same word: the densest input an honest client records (4 chars a frame). Plays until game over, or for
 // `frames` frames if given (then the run may be unfinished, or carry frames after the end).
 export function playTouch(seed, inSeed, frames = 0) {

@@ -1,4 +1,4 @@
-// Card w27-hud: our own HUD labels, no "A LANTERN CAT ARCADE", daily label clear of the chain readout.
+// our own HUD labels, no "A LANTERN CAT ARCADE", daily label clear of the chain readout.
 // 1. Sources no longer carry the old strings. 2. Real starfall.html in headless Chrome: the HUD draws SCORE and BEST,
 // the default best is 10000, a stored best wins, the extra-life popup says EXTRA LIFE, the title has no arcade subtitle.
 import { describe, test, before, after } from 'node:test';
@@ -156,7 +156,7 @@ describe('w27 labels: the daily label (browser)', { concurrency: true }, () => {
   }
 });
 
-// ---------- w29 (MED-2): the daily label also stays clear of the heat flame, the kindle meter, the lives row and the badges ----------
+// ---------- the daily label also stays clear of the heat flame, the kindle meter, the lives row and the badges ----------
 // Zones from the draw code: render/hud-heat.js (flame root FX = CX - 22 + (METER_MAX - 1) * 5 + 11, FY = H - 4; at heat 100 the
 // flame is 11 rows 1.6 apart, half-width up to 4 plus sway), render/core.js (lives from x 10, 11 apart, y H - 8, up to 6 ships;
 // kindle dots CX - 22 + i * 5 at H - 7, wing-feed dot at CX - 26; stage badges from W - 8 leftwards to W - 90, y H - 8).

@@ -53,7 +53,7 @@ const renderer = createRenderer({ gfx, crt: crtGate, fx, text, ui });
 const title = createTitle({ dot: gfx.dot, text, drawSpr: renderer.drawSpr, panel: renderer.panel, fx, ui });
 // a gesture unlocks the audio once (the first one); later gestures never touch the audio clock (pause owns it)
 const makeInput = () => createInput({ target: window, surface: canvas, toField: cx => gfx.toFieldX(cx), onGesture: () => { if (bind.unlock()) syncMusic(); } });
-let input = makeInput(); // w30: leaving for the lobby disposes it; entering again makes a fresh one
+let input = makeInput(); // leaving for the lobby disposes it; entering again makes a fresh one
 // a hidden tab suspends the audio; visible again resumes it only when not paused and not muted
 document.addEventListener('visibilitychange', () => bind.hidden(document.hidden));
 
@@ -63,19 +63,19 @@ const rec = createRecorder(4096);
 
 // ---------- modes, leaderboard, attract (modes.js, attract.js) ----------
 const lbStore = localStorageAdapter('arcade:');
-// Card 3b: every run is saved on this device first (lb, the local board). The remote board is one config value,
+// every run is saved on this device first (lb, the local board). The remote board is one config value,
 // REMOTE_LEADERBOARD_URL in server/client.js, '' (off) by default; pickLeaderboard returns the local board while it is ''.
 // Test-only override: ?lb=http://127.0.0.1:<port> (localhost addresses only) points the game at server/dev-server.mjs.
 function testRemoteUrl() {
   try { const v = new URLSearchParams(location.search).get('lb'); return v && /^http:\/\/(127\.0\.0\.1|localhost)(:\d{1,5})?\/?$/.test(v) ? v : ''; } catch (e) { return ''; }
 }
 const remoteUrl = testRemoteUrl() || REMOTE_LEADERBOARD_URL;
-// card 3c: the verifier also takes a daily on a seed the board handed out on this page (modes.js begin keeps them)
+// the verifier also takes a daily on a seed the board handed out on this page (modes.js begin keeps them)
 const lb = createLeaderboard({ storage: lbStore, verifyReplay: makeVerifyReplay() });
 let picked = lb;
 try { picked = pickLeaderboard(lb, remoteUrl); } catch (e) { picked = lb; } // a mistyped URL keeps the local board
 const remote = picked !== lb ? picked : null;
-const boardLb = remote ? gateReads(remote) : lb; // board, rank and attract reads; a failed read waits 10 s (LOW11)
+const boardLb = remote ? gateReads(remote) : lb; // board, rank and attract reads; a failed read waits 10 s
 const kv = storageKv();
 const modes = createModes({ lb, kv });
 const table = createTable({ lb: boardLb });
@@ -98,18 +98,18 @@ function refreshTable(fresh = false) {
     if (r && !table.note && typeof r.league === 'string') table.summary = table.leagueLine(r.league, r.tier, r.trophies);
     if (r && remote) { table.rating = ratingText(r); syncLine(); } // Best-5 rating line, from the server only
   }, () => {}).then(() => {
-    // LOW11: an open table whose read failed tries again after the read gate's 10 s, not before
+    // an open table whose read failed tries again after the read gate's 10 s, not before
     if (table.offline && remote && !boardTimer) boardTimer = setTimeout(() => { boardTimer = 0; if (app === 'title' && ui.menuPage === 'table') refreshTable(); }, READ_RETRY_MS + 100);
   });
 }
 refreshTable();
 
-// ---------- card 3b: status line, retry queue, storage warning, share my daily ----------
+// ---------- status line, retry queue, storage warning, share my daily ----------
 const status = { text: '', col: COL.teal };
 table.rating = '';
 function syncLine() { table.line = status.text || table.rating; table.lineCol = status.text ? status.col : COL.teal; }
 function setStatus(s, col = COL.teal) { status.text = s || ''; status.col = col; syncLine(); }
-// MED9: storage refused (private window, blocked site data): runs last this page only, and the player is told so
+// storage refused (private window, blocked site data): runs last this page only, and the player is told so
 const WARN_TEXT = 'SCORES NOT KEPT ON THIS DEVICE';
 function storageWorks() { try { const k = 'starfall.probe'; localStorage.setItem(k, '1'); localStorage.removeItem(k); return true; } catch (e) { return false; } }
 let storageWarn = false;
@@ -161,7 +161,7 @@ function share() {
 }
 // the key hint and the tap target show only while there is a daily to share
 function setShareable(on) { table.hint = on ? HINT_SHARE : null; table.tap = on ? SHARE_TAP : null; }
-// LOW8: a tap or click on the SHARE target copies it (the table's tap = fire = back is held back for that spot).
+// a tap or click on the SHARE target copies it (the table's tap = fire = back is held back for that spot).
 // Capture phase on the window runs before the input layer's own canvas listeners.
 function onTable() { return app === 'title' && ui.menuPage === 'table' && !!lastDaily && !!table.tap; }
 function hitShare(cx, cy) {
@@ -185,7 +185,7 @@ addEventListener('touchend', endTouch, { capture: true, passive: false });
 addEventListener('touchcancel', endTouch, { capture: true, passive: false });
 addEventListener('mousedown', e => { if (e.target === canvas && onTable() && hitShare(e.clientX, e.clientY)) e.stopPropagation(); }, true);
 addEventListener('click', e => { if (e.target === canvas && onTable() && hitShare(e.clientX, e.clientY)) share(); }, true);
-// w30b: the touch LOBBY button on the pause screen. Touch players only: a coarse pointer (as the lobby decides its TAP hint),
+// the touch LOBBY button on the pause screen. Touch players only: a coarse pointer (as the lobby decides its TAP hint),
 // or any touch on the canvas this session. A touch that begins on the button is held back from the input layer (so it is not
 // the tap that resumes); lifting it still on the button asks the tick to leave. Every other tap resumes as before.
 const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
@@ -243,7 +243,7 @@ function startRun(stage = 1, opts = {}) {
   sim = createSim({ seed, mode });
   if (godFlag) sim.setGod(true);
   rec.reset(); frozen = false; hiSavedThisRun = false; bossKilled = false;
-  lastDaily = null; setShareable(false); table.share = null; // LOW7: a new run ends the old run's share
+  lastDaily = null; setShareable(false); table.share = null; // a new run ends the old run's share
   input.clearLatches();
   setApp('game');
   bossLive = false; livesBefore = sim.lives; drainSim();
@@ -329,7 +329,7 @@ function checkHi() {
 
 function updTitle(m) {
   title.update();
-  if ((m & M_BACK) && ui.menuPage === 'main' && toLobby()) return; // w30: Esc / Backspace on the main menu goes back to the lobby (sub-pages go to the main menu first)
+  if ((m & M_BACK) && ui.menuPage === 'main' && toLobby()) return; // Esc / Backspace on the main menu goes back to the lobby (sub-pages go to the main menu first)
   if (ui.appT < 20) return;
   if (m) idleT = 0; else if (++idleT === IDLE_TICKS - 300) att.prepare(); else if (idleT >= IDLE_TICKS) { startAttract(); return; }
   if (ui.menuPage === 'main') {
@@ -344,7 +344,7 @@ function updTitle(m) {
       else if (ui.menuSel === 4) setCrt(!ui.crtOn);
       else openTable();
     }
-  } else if (ui.menuPage === 'dailyOff') { // card 3c: the board did not answer /daily
+  } else if (ui.menuPage === 'dailyOff') { // the board did not answer /daily
     if (m & (M_FIRE | M_ALT)) { bind.sfxName('menuSelect'); ui.menuPage = 'main'; startRun(1); }
     else if (m & M_BACK) { ui.menuPage = 'main'; bind.sfxName('menuMove'); }
   } else if (ui.menuPage === 'table') {
@@ -355,7 +355,7 @@ function updTitle(m) {
 }
 function openTable(tab = 0) { ui.menuPage = 'table'; table.tab = tab; refreshTable(); }
 
-// ---------- card 3c: the Daily from the board ----------
+// ---------- the Daily from the board ----------
 // Remote board on: DAILY FLIGHT asks the server for today's seed and ticket first (GET /daily, through the read gate
 // and the client's timeout). The run uses the server's day and seed and the submit carries the ticket. If the board
 // does not answer, the Daily is not started (never the public seed for an online daily): the player sees why and may
@@ -372,7 +372,7 @@ function chooseDaily() {
     modes.begin(MODE_DAILY, 0, d); // throws on an answer that is not a day and a seed
     return d;
   })().then(d => {
-    if (sid !== session) return null; // w30: the player left for the lobby meanwhile (leave already cleared the ask)
+    if (sid !== session) return null; // the player left for the lobby meanwhile (leave already cleared the ask)
     dailyAsk = null; dailyNote = '';
     if (app !== fromApp || run !== fromRun) return null; // the player went somewhere else meanwhile (free play, attract)
     startRun(1, { daily: true, server: d });
@@ -415,13 +415,13 @@ function confirmEntry() {
       const id = playerId || await getLocalPlayerId(lbStore);
       const body = modes.body(run, sim, rp, name, id);
       const res = await modes.submit(run, sim, rp, name, id); // the local board first, always
-      // LOW7: the share belongs to the run just finished; a free run clears it
+      // the share belongs to the run just finished; a free run clears it
       lastDaily = run.mode === MODE_DAILY ? { id: hashReplay(rp), dayKey: run.dayKey, score: sim.score, league: remote ? null : res.league && res.league.label } : null; // remote on: the league is the server's (set in onQueueEvent), never the local board's guess
       if (sendq) {
         let queued = false; addRefused = false;
         try { queued = (await sendq.add(body)) === true; } catch (e) { queued = false; }
         if (queued) { setStatus(statusFor({ kind: 'sending' }), COL.teal); table.note = ''; } // then the queue sends it
-        else { addRefused = true; setStatus(statusFor({ kind: 'nosend' }), COL.amber); table.setResult(res); } // LOW5: saved here, will not be sent
+        else { addRefused = true; setStatus(statusFor({ kind: 'nosend' }), COL.amber); table.setResult(res); } // saved here, will not be sent
       } else table.setResult(res);
       lastError = null; return res;
     } catch (e) { lastError = e.code || e.message; return null; }
@@ -435,7 +435,7 @@ function confirmEntry() {
   return lastSubmit;
 }
 
-// ---------- w30: back to the arcade lobby ----------
+// ---------- back to the arcade lobby ----------
 // The lobby (arcade/lobby.js) loads this module into its own page and hands over its return function. Starfall opened alone
 // (starfall.html) has none, so back does nothing there. Leaving stops the loop, takes the input listeners off and silences and
 // suspends the audio; the module stays loaded, so entering again (enterStarfall) is a fresh cabinet with no second loop,
@@ -471,17 +471,17 @@ export function enterStarfall() {
 // one 60 Hz tick
 let audioPaused = false;
 function tick() {
-  if (away) return; // w30b: loop.stop() lets the rest of this frame's steps run; after leaving, none of them may touch Starfall
+  if (away) return; // loop.stop() lets the rest of this frame's steps run; after leaving, none of them may touch Starfall
   ui.F++;
   input.poll();
   const m = input.menu;
   if ((m & M_MUTE) && app !== 'entry') mute(!ui.muted);
   if ((m & M_PAUSE) && app !== 'title' && app !== 'cabinet' && app !== 'attract' && app !== 'entry') ui.paused = !ui.paused;
-  else if ((m & M_BACK) && app === 'game') { // w30: in a run Esc / Backspace pauses; while paused it leaves for the lobby (the run is abandoned, nothing is submitted)
+  else if ((m & M_BACK) && app === 'game') { // in a run Esc / Backspace pauses; while paused it leaves for the lobby (the run is abandoned, nothing is submitted)
     if (!ui.paused) ui.paused = true; else if (toLobby()) return;
   }
   if (ui.paused !== audioPaused) { audioPaused = ui.paused; bind.pause(audioPaused); }
-  if (lobbyAsk) { lobbyAsk = false; if (ui.paused && app === 'game' && toLobby()) return; } // w30b: the touch LOBBY button
+  if (lobbyAsk) { lobbyAsk = false; if (ui.paused && app === 'game' && toLobby()) return; } // the touch LOBBY button
   if (ui.paused) { if (m & M_FIRE) { ui.paused = false; input.clearLatches(); } return; }
   fx.savePrev();
   // during sim hit-stop the effects freeze too; during bossOut particles run at half speed (cosmetic slow-mo)
@@ -536,7 +536,7 @@ function drawScreen() {
     if (ui.menuSel < 2) {
       if (ui.F - rowInfo.at >= 60 || ui.F < rowInfo.at) { // Date and storage once a second, not every frame
         rowInfo.at = ui.F; rowInfo.day = modes.todayKey(); rowInfo.used = modes.attemptUsed(rowInfo.day);
-        const r = dailyResetText(Date.now()); if (r !== rowInfo.reset) rowInfo.reset = r; // LOW12, UTC
+        const r = dailyResetText(Date.now()); if (r !== rowInfo.reset) rowInfo.reset = r; // UTC
         checkStorage(false);
       }
       const day = rowInfo.day, used = rowInfo.used;
@@ -566,7 +566,7 @@ function runLabel() {
 // fps: rAF timestamps over the last second
 const fpsT = new Float64Array(256); let fpsN = 0;
 function render(al) {
-  if (away) return; // w30b: no stray Starfall frame over the lobby after leaving
+  if (away) return; // no stray Starfall frame over the lobby after leaving
   fpsT[fpsN++ & 255] = performance.now();
   if (gfx.lost) return;
   const a = ui.paused || frozen ? 1 : al;
@@ -599,16 +599,16 @@ function replayString() {
 // ---------- test hooks for automated checks ----------
 window.SF = {
   start(n, seed) { startRun(n || 1, seed != null ? { seed } : {}); },
-  daily() { return chooseDaily(); }, // card 3c: remote on, a promise ('daily' once the run started, null if the board failed)
+  daily() { return chooseDaily(); }, // remote on, a promise ('daily' once the run started, null if the board failed)
   // modes: scores(board, key) reads a board; page(name) shows a title page; attractNow() / idle() drive attract mode;
   // nameEntry(name) types a name on the entry screen and saves; lastSubmit() the saved result (or null)
-  app() { return app; }, // w30: the app state even when a run is on (state shows the sim state then)
+  app() { return app; }, // the app state even when a run is on (state shows the sim state then)
   away() { return away; },
   paused() { return ui.paused; },
-  touchUi() { return !!ui.touchUi; }, // w30b: touch player (coarse pointer or a touch seen this session)
-  lobbyButton() { return ui.lobbyBtnF !== undefined && ui.F - ui.lobbyBtnF <= 2; }, // w30b: the touch LOBBY button was drawn in the last frames
+  touchUi() { return !!ui.touchUi; }, // touch player (coarse pointer or a touch seen this session)
+  lobbyButton() { return ui.lobbyBtnF !== undefined && ui.F - ui.lobbyBtnF <= 2; }, // the touch LOBBY button was drawn in the last frames
   scores(board = 'all', key, unique = true) { return lb.getBoard({ game: GAME_ID, board, key, limit: 10, unique }); }, // unique false = every saved run, not the best per player
-  // card 3b: remote() the remote board's address ('' = off); boardScores(board) reads the board the table shows
+  // remote() the remote board's address ('' = off); boardScores(board) reads the board the table shows
   // (remote when on, through the 10 s read gate); queue() the retry queue; flushQueue() sends what is due now (or
   // everything with now = true); status() the status line text; table() what the table shows; share() runs the
   // share action (C key); lastRemote() the last queue answer; storageWarn() whether the storage warning shows
@@ -636,7 +636,7 @@ window.SF = {
   lastSubmit() { return lastSubmit; },
   lastError() { return lastError; },
   runInfo() { return run ? { mode: run.mode, dayKey: run.dayKey, seed: run.seed, claimed: run.claimed, ranked: run.ranked, ticket: run.ticket || null, fromServer: !!run.fromServer } : null; },
-  dailyOff() { return ui.menuPage === 'dailyOff' ? 'DAILY NEEDS THE BOARD: ' + dailyOffCode : ''; }, // card 3c
+  dailyOff() { return ui.menuPage === 'dailyOff' ? 'DAILY NEEDS THE BOARD: ' + dailyOffCode : ''; }, // the Daily from the board
   ranked() { return run ? (run.claimed ? run.ranked : null) : null },
   get state() { return app === 'game' ? sim.state : app; },
   get stage() { return sim ? sim.stage : 1; },
@@ -700,7 +700,7 @@ window.SF = {
 const hookApp = {
   get sim() { return sim; },
   // SF.mode(m): start a run in 'daily' or 'free'; no argument returns the current mode
-  // card 3c: daily with the remote board on goes through chooseDaily and returns its promise
+  // daily with the remote board on goes through chooseDaily and returns its promise
   setMode(m) { if (m === undefined) return run ? run.mode : selMode; if (m !== MODE_DAILY && m !== MODE_FREE) return null; if (m === MODE_DAILY) return chooseDaily(); startRun(1); return m; },
   // one sim frame with this input word, recorded in the replay exactly like a played frame
   // quiet: skip sound effects (for hooks that run many frames at once)

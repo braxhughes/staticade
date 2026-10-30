@@ -143,7 +143,7 @@ export const hudLayer = {
   }
 };
 
-// w30b: the touch-only LOBBY button on the pause screen, in field units (400 x 300). Top right, under the boss bar (y 21)
+// the touch-only LOBBY button on the pause screen, in field units (400 x 300). Top right, under the boss bar (y 21)
 // and the multiplier, far from the centre where a resume tap lands. The hit box is the drawn box plus 4 units.
 export const LOBBY_BOX = Object.freeze({ x0: 322, x1: 392, y0: 32, y1: 56 });
 const LOBBY_PAD = 4;
@@ -163,7 +163,7 @@ export const overlayLayer = {
     const F = ui.F, stateT = ui.appT;
     if (ui.paused) {
       text('PAUSED', CX, 150, COL.white, 2, 'c');
-      if (ui.canLobby && st !== 'results' && ui.touchUi) { text('TAP: RESUME', CX, 170, COL.dim, 1, 'c'); lobbyButton(R); } // w30b: touch players get a LOBBY button
+      if (ui.canLobby && st !== 'results' && ui.touchUi) { text('TAP: RESUME', CX, 170, COL.dim, 1, 'c'); lobbyButton(R); } // touch players get a LOBBY button
       else if (ui.canLobby && st !== 'results') text('ESC: LOBBY   FIRE: RESUME', CX, 170, COL.dim, 1, 'c');
       else text('PRESS FIRE', CX, 170, COL.dim, 1, 'c');
       return;

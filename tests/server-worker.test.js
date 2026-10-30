@@ -226,7 +226,7 @@ test('attack: SQL injection in name, playerId and query strings is refused and t
   }
   assert.equal((await get(W, env, '/board?game=starfall&limit=1;DROP')).body.error, 'bad_board');
   const tables = env.DB.raw.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map((r) => r.name);
-  assert.deepEqual(tables, ['board', 'board_size', 'flagged', 'hidden', 'kv', 'locks', 'players', 'rate', 'ratings', 'replays', 'results', 'season_runs', 'seen']); // flagged: held near-copies (w18-lb-server-fix2); the rest are the SQL boards
+  assert.deepEqual(tables, ['board', 'board_size', 'flagged', 'hidden', 'kv', 'locks', 'players', 'rate', 'ratings', 'replays', 'results', 'season_runs', 'seen']); // flagged: held near-copies; the rest are the SQL boards
   assert.equal((await get(W, env, '/board?game=starfall')).body.rows.length, 1);
 });
 

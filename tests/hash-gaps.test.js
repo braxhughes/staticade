@@ -1,4 +1,4 @@
-// w13-tests (w8-tests review LOW, log ~21:30): the hash tests nudged a field by 1 and so passed if the hash dropped the low
+// the hash tests nudged a field by 1 and so passed if the hash dropped the low
 // bit (or a whole byte) of a value, and the wingman clock in 'bonusEnd' was untested. New file only.
 // (a) full-value hash checks: every bit of every listed field changes stateHash(). No stored hash values: each check
 //     compares the hash with the same sim's hash a moment earlier.

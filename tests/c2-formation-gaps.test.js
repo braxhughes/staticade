@@ -1,4 +1,4 @@
-// w13-tests: closes the V1 test gaps the cold review found (log ~06:40). New file only; game code untouched.
+// Closes V1 test gaps found in review.
 // Lead aim k / T floor / aimX clamp, Pincer gating (row, type, mate row, which enemy fires), Hunt band re-centring,
 // huntC reset, tie-break, THERM_HALF / THERM_AMP and the Undertow clamp. Inputs are picked so the 72 lead cap
 // and the other clamps do not hide the number under test. No stored hash values.

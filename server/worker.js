@@ -5,7 +5,7 @@
 //   GET  /rank          ?game=&playerId=&version=
 //   GET  /replay/:id    a stored run, 404 if gone
 //   GET  /daily         ?game=  header x-player-id: <playerId>. Today's (UTC, server clock) Daily: { dayKey, seed, ticket,
-//                       issuedAt, dailySecret } (card 3c, server/daily.js)
+//                       issuedAt, dailySecret } (server/daily.js)
 //   POST /admin/release a held near-copy onto the board: { id }, header authorization: Bearer <ADMIN_TOKEN>
 //   POST /admin/hide    take an entry off every board: { entryId }, same header
 // Errors are { ok: false, error: <code>, message }. Success is { ok: true, ... }.
@@ -15,7 +15,7 @@
 // Optional env (wrangler.toml [vars], none are secrets): ALLOWED_ORIGIN (CORS, default '*').
 // Optional secret (npx wrangler secret put ADMIN_TOKEN, never in the repo): ADMIN_TOKEN, at least 24 characters.
 // Without it /admin/release answers 404, as if it did not exist.
-// Secret for production (npx wrangler secret put DAILY_SECRET, at least 32 characters, card 3c): DAILY_SECRET. With it
+// Secret for production (npx wrangler secret put DAILY_SECRET, at least 32 characters): DAILY_SECRET. With it
 // the Daily's seed comes from the secret (nobody can compute a day's seed before /daily hands it out), a daily submit
 // needs the ticket /daily gave, may hold no more play than real time since that ticket, and only today's or yesterday's
 // daily is taken (UTC). Without it (dev, tests) the Daily keeps the public seed and today's checks.
@@ -38,17 +38,17 @@ import { createDailyKeys, dailySecretOf, todayKey } from './daily.js';
 //   rotates playerIds is held to 30 re-sims per 10 minutes per address (about 30 s of CPU at worst).
 // - heldCap 500: at most this many near-copies wait for review at once (each keeps its replay, typically about
 //   15 KB, 864 KB at the very most, so under 450 MB even then). Past it a near-copy is refused (near_duplicate, 409).
-// - boardMaxAge 10 s (LOW10): a board read may be served from a cache for up to 10 s. A new score shows within
+// - boardMaxAge 10 s: a board read may be served from a cache for up to 10 s. A new score shows within
 //   10 s, which nobody notices, and a burst of reads (the attract mode after a version bump, a busy launch evening)
 //   costs one database read per board per 10 s per edge location instead of one per request.
-// - dailyPerWindow 60 per 10 minutes per address (card 3c): GET /daily is asked once per DAILY FLIGHT start (a run
+// - dailyPerWindow 60 per 10 minutes per address: GET /daily is asked once per DAILY FLIGHT start (a run
 //   takes at least 53 s, so a real player asks at most about 11 times in 10 minutes). It cannot be cached (each answer
 //   is signed for one player), so a storm of it is held to 60 HMACs and 60 rate-counter writes per address.
 export const LIMITS = Object.freeze({ bodyBytes: MAX_REPLAY_CHARS + 16384, windowMs: 600000, ipPerWindow: 30, pidPerWindow: 12, heldCap: 500,
   boardMaxAge: 10, replayMaxAge: 300, dailyPerWindow: 60 });
-export const BOARD_WINDOW = 100; // rows per cached board window (MED2, see board below)
+export const BOARD_WINDOW = 100; // rows per cached board window (see board below)
 
-// w29 fix 2 (MED-1): the edge cache key of one board window, the one place it is built. board() reads through it and
+// the edge cache key of one board window, the one place it is built. board() reads through it and
 // purge() deletes it, so the two can never drift apart. Built only from the normalised query (see board).
 export function windowKey(origin, game, ver, board, from) {
   return `${origin}/board?game=${encodeURIComponent(game)}&version=${encodeURIComponent(ver)}&board=${encodeURIComponent(board)}&from=${from}`;
@@ -172,7 +172,7 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
     const rhash = hashReplay(c.replay);
     if (await isSeen(db, c.game, rhash)) throw new LeaderboardError('duplicate_replay', 'this replay was already submitted');
 
-    // card 3c: with DAILY_SECRET a daily needs this server's ticket for its game, day and player
+    // with DAILY_SECRET a daily needs this server's ticket for its game, day and player
     let daily;
     const secret = dailySecretOf(env);
     if (secret && c.mode === 'daily' && typeof c.dayKey === 'string') {
@@ -186,7 +186,7 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
 
     const dayKey = c.mode === 'daily' ? c.dayKey : undefined;
     const claim = { game: c.game, board: dayKey ? `daily:${dayKey}` : 'free', hash: v.hash, score: v.score };
-    // Duplicate checks without a lock (w22, MED4): the exact result first (one atomic claim), then near copies of EARLIER claims
+    // Duplicate checks without a lock: the exact result first (one atomic claim), then near copies of EARLIER claims
     // only (server/d1-adapter.js findNearRun), so two copies sent at the same moment cannot both get on the board.
     // A near copy is not thrown away: the bot-measured gap (honest at most 0.32, copies at least 0.97) may not hold
     // for real players, so the run is held for review (never on a board, no trophies) and can be released later.
@@ -213,7 +213,7 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
   }
 
   // Put a checked run on the boards (claim already taken; the batch marks it finished); on any failure give it back.
-  // Stored, the edge cache windows of every board it went on are purged before the answer goes back (MED-1).
+  // Stored, the edge cache windows of every board it went on are purged before the answer goes back.
   async function store(db, claim, run, origin) {
     const t = now();
     const rhash = hashReplay(run.replay);
@@ -229,7 +229,7 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
     return res;
   }
 
-  // w29 fix 2 (MED-1): delete every cached window (ranks 1-100 up to BOARD_CAP) of these boards from this data
+  // delete every cached window (ranks 1-100 up to BOARD_CAP) of these boards from this data
   // centre's edge cache. All windows, not just the new row's: a new row moves every row under it down a rank, and a
   // player's row that moves up leaves a gap further down. Awaited (no waitUntil) so the player's next read cannot
   // beat it. No edge cache (Node, the dev server): nothing to do. A failed delete is not an error: the run is stored
@@ -270,14 +270,14 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
     try { return JSON.parse(await readCapped(request, 1024)); } catch { throw new HttpError('bad_json', 'body must be JSON'); }
   }
 
-  // MED6: take an entry (an offensive name, say) off every board, and (w22 fix, MED3) out of the player's best 5 and
+  // take an entry (an offensive name, say) off every board, and out of the player's best 5 and
   // the percentile field. The player can still play and submit new runs; the same replay or result again is
   // refused as a duplicate.
   async function hide(request, env) {
     const input = await adminInput(request, env);
     const entry = input?.entryId;
     if (typeof entry !== 'string' || !REPLAY_ID.test(entry)) throw new HttpError('bad_input', 'entryId must be a board entry id');
-    // the boards the entry is on, read before it goes, so their cached windows can be purged after (MED-1)
+    // the boards the entry is on, read before it goes, so their cached windows can be purged after
     const { results: on } = await env.DB.prepare('SELECT DISTINCT game, ver, board FROM board WHERE entry = ?').bind(entry).all();
     const { rows, runs } = await hideEntry(env.DB, { entry, t: now() });
     if (!rows && !runs) throw new HttpError('not_found', 'no board or best-5 list has that entry');
@@ -315,7 +315,7 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
     return { game, ver: versionOf(q), b, limit, offset };
   }
 
-  // MED2 (w22 fix): a board is read, and cached, in fixed windows of BOARD_WINDOW rows (ranks 1-100, 101-200, ...).
+  // a board is read, and cached, in fixed windows of BOARD_WINDOW rows (ranks 1-100, 101-200, ...).
   // The cache key is built only from the normalised query (game, major version, resolved board, window start), so
   // extra or reordered params, a different limit or offset, or the default season or day spelled out all hit the
   // same few entries: at most BOARD_CAP / BOARD_WINDOW = 10 per board. A cache miss reads one window (at most 100
@@ -347,7 +347,7 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
     return { status: 200, body: { ok: true, ...r, season } };
   }
 
-  // card 3c: today's Daily for this game. With DAILY_SECRET: the secret seed and a ticket for this player. Without:
+  // today's Daily for this game. With DAILY_SECRET: the secret seed and a ticket for this player. Without:
   // the public seed (what every browser computes) and ticket null, so a dev server behaves as before.
   async function daily(request, url, env) {
     const db = env.DB;
@@ -373,7 +373,7 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
     return { status: 200, body: { ok: true, ...r }, headers: { 'cache-control': `public, max-age=${L.replayMaxAge}` } };
   }
 
-  // LOW10: board windows through the edge cache (Cloudflare's caches.default) when there is one; Node has none.
+  // board windows through the edge cache (Cloudflare's caches.default) when there is one; Node has none.
   // `key` is the normalised URL (see board), never the request's own URL. Only a 200 is stored.
   async function cachedGet(key, ctx, make) {
     const cache = edgeCache();

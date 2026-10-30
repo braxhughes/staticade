@@ -1,6 +1,6 @@
 // C.2 slice V1 (design.md B.11 0.1, 1.0, 1.1, 1.3, 1.5, 2.1, 2.2): Weave, Pincer, Undertow, Thermals, lead aim, Hunt.
 // Parting (1.2) and Pressing sky (1.4) are cut (C.2 CUT box). Each lever's Verify line is a test here, plus the
-// lead-aim feel check and the startAim seam order (C2-0 review MED1). No state hash is compared with a stored
+// lead-aim feel check and the startAim seam order. No state hash is compared with a stored
 // value: the hash tests only check that the new state is mixed in.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -296,7 +296,7 @@ test('lead aim feel check: ship at x 200 moving 2.7: the shot crosses y 274 at l
   assert.equal(x1, 200);
 });
 
-// ---------- C2-0 review MED1: the startAim seam order ----------
+// ---------- the startAim seam order ----------
 test('startAim seam order: S.lead runs once, after aimV is reset to 1.2 and before T.aim; a retarget resets aimV; fireAim uses e.aimV', () => {
   const { S, e, sim } = pinned(6, 150, 2.0);
   const log = [];

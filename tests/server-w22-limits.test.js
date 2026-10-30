@@ -1,4 +1,4 @@
-// w22 HIGH1: the replay cap comes from MAX_RUN_FRAMES at the densest honest input (touch, a new word every frame),
+// the replay cap comes from MAX_RUN_FRAMES at the densest honest input (touch, a new word every frame),
 // with the body cap to match. Through worker.fetch on the node:sqlite D1 shim with real touch runs.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';

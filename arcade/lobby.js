@@ -1,4 +1,4 @@
-// The arcade lobby (w31 layout): the selected cabinet stands on the right, swung about 60 degrees open from the back
+// The arcade lobby: the selected cabinet stands on the right, swung about 60 degrees open from the back
 // wall so its side panel shows; its wall board (the game's ALL-TIME top 10 and the player's own line) hangs beside it;
 // the left of the screen carries the game's name. Arrows / A D / gamepad / swipe / tap slide the next cabinet in.
 // Selecting Starfall swings the cabinet shut against the wall (facing the camera), then dollies down to the coin door
@@ -319,8 +319,8 @@ const board = browserBoard(typeof location === 'object' ? location.search : '');
 board.refresh();
 
 let starfallLoaded = false;
-// w30: Starfall calls this (Esc / Backspace) after it has stopped its own loop, input and audio. Back on the Starfall cabinet:
-// w31c's resetToLobby stands it swung open again, re-reads the wall board and restarts the loop.
+// Starfall calls this (Esc / Backspace) after it has stopped its own loop, input and audio. Back on the Starfall cabinet:
+// resetToLobby stands it swung open again, re-reads the wall board and restarts the loop.
 export function returnToLobby() {
   tapPending = false; swipePending = 0; footAt = -1;
   input.releaseAll(); input.clearLatches(); // keys pressed inside Starfall must not select it again
@@ -881,7 +881,7 @@ const loop = createLoop({ step: tick, render });
 loop.start();
 
 // ---------- coming back from a game ----------
-// The one entry point for the return path (w30's returnToLobby): back to the lobby on the same machine, the swing and
+// The one entry point for the return path (returnToLobby): back to the lobby on the same machine, the swing and
 // dolly cleared (so the selected cabinet stands swung open again), the board read again and its rows typed in again,
 // and the draw loop running. Safe to call from any mode.
 function resetToLobby() {
@@ -901,11 +901,11 @@ window.LOBBY = {
       mode, index: nav.index, id: MACHINES[nav.index].id, ids: MACHINES.map(m => m.id), names: MACHINES.map(m => m.name),
       moving: nav.moving, pos: +nav.pos(0).toFixed(3), cam: Array.from(cam), crt: ui.crtOn, flash: flashT, dolly: +(dollyT / DOLLY_TICKS).toFixed(3),
       muted: ui.muted, music: musicOn, fps: fps(), handoffReady, stepTicks: STEP_TICKS,
-      // w31: the selected cabinet's angle in degrees (72 swung open, 0 flush), the swing's progress 0..1
+      // the selected cabinet's angle in degrees (72 swung open, 0 flush), the swing's progress 0..1
       angle: +(cabAngle(nav.index, 0) * 180 / Math.PI).toFixed(2), swing: mode === 'lobby' ? 0 : +clamp((swingHold >= 0 ? swingHold * SWING_TICKS : swingT) / SWING_TICKS, 0, 1).toFixed(3)
     };
   },
-  // w31: the wall board: state 'loading' | 'ok' | 'offline', rows, the player's line, and how many reads went out
+  // the wall board: state 'loading' | 'ok' | 'offline', rows, the player's line, and how many reads went out
   board() { return board.snapshot(); },
   refreshBoard() { return board.refresh().then(() => board.snapshot()); },
   // freeze the Enter swing at q (0..1) on Starfall (starts it if needed); swingAt(null) lets it run

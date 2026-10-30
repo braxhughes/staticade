@@ -1,4 +1,4 @@
-// w24: the lobby wordmark. The name lives only in arcade/brand.js; the wordmark gathers, skips, and respects reduced motion.
+// the lobby wordmark. The name lives only in arcade/brand.js; the wordmark gathers, skips, and respects reduced motion.
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';

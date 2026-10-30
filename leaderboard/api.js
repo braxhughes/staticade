@@ -17,7 +17,7 @@ const GAME_RE = /^[a-z0-9_-]{1,32}$/i;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const BOARD_CAP = 100;
 const MAX_STATS_JSON = 2000;
-// Replay cap (HIGH1). The server re-simulates runs up to MAX_RUN_FRAMES (60 minutes at 60 Hz). The densest input an
+// Replay cap. The server re-simulates runs up to MAX_RUN_FRAMES (60 minutes at 60 Hz). The densest input an
 // honest client records is touch: the steer-to x changes every frame, so every frame is its own run of length 1. A
 // word is at most 13 bits (input-word.js: bits 13-15 are always 0), so a varint word is at most 2 bytes and the run
 // length 1 byte: 3 bytes a frame, which is 4 base64url chars. Measured on a touch run that moves every frame:

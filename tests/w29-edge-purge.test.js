@@ -1,4 +1,4 @@
-// w29 fix 2 (MED-1): the Worker keeps /board windows in Cloudflare's edge cache (caches.default). An accepted submit,
+// the Worker keeps /board windows in Cloudflare's edge cache (caches.default). An accepted submit,
 // an admin release and an admin hide must purge every cached window of every board the run is on, before the
 // answer goes back, so the player's next read shows the new board. A held (202) or refused submit changes no board
 // and purges nothing. Through the real entry point worker.fetch on the node:sqlite D1 shim, with a fake

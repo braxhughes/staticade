@@ -1,4 +1,4 @@
-// Card 3c: the Daily's seed and run ticket, made by the server from a secret (Worker secret DAILY_SECRET).
+// the Daily's seed and run ticket, made by the server from a secret (Worker secret DAILY_SECRET).
 //
 // Why: the public seed (engine/rng.js dailySeed, the same formula in every browser) lets anyone compute tomorrow's
 // level today and practise it. With a secret, nobody can know a day's seed before the server hands it out that day.
@@ -12,7 +12,7 @@
 // crypto.subtle.verify (WebCrypto's own comparison, not a string compare that stops at the first wrong byte).
 //
 // WebCrypto only (globalThis.crypto.subtle), so the same code runs in the Worker and in Node.
-// No secret set: dailySecretOf returns null and the server keeps the public seed and today's checks (card 3c item 4).
+// No secret set: dailySecretOf returns null and the server keeps the public seed and today's checks.
 import { dailySeed } from '../engine/rng.js';
 
 export const MIN_SECRET_LEN = 32; // `openssl rand -hex 32` gives 64 characters

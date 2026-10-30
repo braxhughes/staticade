@@ -1,4 +1,4 @@
-// Retry queue for runs sent to the remote leaderboard (card 3b).
+// Retry queue for runs sent to the remote leaderboard.
 // The game saves every finished ranked run on this device first (main.js), then adds the exact submit body here.
 // The queue lives in localStorage, so a run that could not be sent (offline, server down, busy, rate limited, no
 // answer) is sent again later: on load, after the next run, when the browser comes back online, and on a backoff timer.
@@ -27,7 +27,7 @@ export const BACKOFF_MAX_MS = 300000; // never more than 5 minutes apart
 export const RATE_WAIT_MS = 60000;    // rate_limited: wait at least a minute
 // retryable: the run itself may be fine, the server or the network was not
 export const RETRY_CODES = Object.freeze(['offline', 'timeout', 'server_error', 'busy', 'rate_limited']);
-// LOW4: every entry gets this many sends; a run that still fails after them leaves the queue (it stays on the local board)
+// every entry gets this many sends; a run that still fails after them leaves the queue (it stays on the local board)
 export const MAX_TRIES = 20;
 // answers that will never turn into a success for this exact run, even though the status looks like a server problem
 const NEVER_CODES = Object.freeze(['verify_disagree']);
@@ -59,7 +59,7 @@ function validBody(b, version) {
   return !!b && typeof b === 'object' && typeof b.game === 'string' && isPlayerId(b.playerId) && typeof b.name === 'string' &&
     Number.isSafeInteger(b.score) && b.score > 0 && typeof b.replay === 'string' && b.replay.length > 0 &&
     typeof b.seed === 'number' && (b.mode === 'free' || (b.mode === 'daily' && typeof b.dayKey === 'string')) &&
-    (b.ticket === undefined || (typeof b.ticket === 'string' && b.ticket.length > 0 && b.ticket.length <= 64)) && // card 3c: kept as given
+    (b.ticket === undefined || (typeof b.ticket === 'string' && b.ticket.length > 0 && b.ticket.length <= 64)) && // kept as given
     String(b.version) === String(version);
 }
 function cleanItems(raw, version) {
@@ -191,7 +191,7 @@ export function createSubmitQueue({ remote, backend, now = () => Date.now(), loc
           if (!err) kind = res && res.held ? 'held' : 'ok';
           else if (isWrongVersion(err)) kind = 'version';
           else if (err.code === 'duplicate_replay') kind = 'dup';
-          else if (isRetryable(err)) kind = head.tries >= MAX_TRIES ? 'drop' : 'retry'; // LOW4: no retry forever
+          else if (isRetryable(err)) kind = head.tries >= MAX_TRIES ? 'drop' : 'retry'; // no retry forever
           else kind = 'drop';
           const code = err ? dropCode(err) : res && res.held ? 'held_for_review' : null;
           const left = await editLock(() => {
@@ -218,7 +218,7 @@ export function createSubmitQueue({ remote, backend, now = () => Date.now(), loc
   return Q;
 }
 
-// LOW11 / LOW10: board reads from the remote server. After a failed read every read fails at once (code 'offline',
+// board reads from the remote server. After a failed read every read fails at once (code 'offline',
 // no request) until READ_RETRY_MS has passed, so a down server costs at most one request per 10 s from the table,
 // the rank line and attract mode together. `requests` counts the reads that really went out (tests).
 export const READ_RETRY_MS = 10000;
@@ -238,6 +238,6 @@ export function gateReads(remote, { now = () => Date.now(), wait = READ_RETRY_MS
   };
   G.reset = () => { failAt = -Infinity; }; // a submit just got an answer: the server is back
   G.getBoard = gate('getBoard'); G.getRank = gate('getRank'); G.getReplay = gate('getReplay');
-  if (typeof remote.getDaily === 'function') G.getDaily = gate('getDaily'); // card 3c: the Daily's seed and ticket, same gate
+  if (typeof remote.getDaily === 'function') G.getDaily = gate('getDaily'); // the Daily's seed and ticket, same gate
   return G;
 }

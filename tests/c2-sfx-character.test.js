@@ -1,4 +1,4 @@
-// w13-tests (V4 re-review MED-1 and LOW): cut, hunt and snap must differ from each other and keep their character.
+// cut, hunt and snap must differ from each other and keep their character.
 // The surviving mutants were: cut replaced by snap, hunt pitch x10, cut noise lowpassed at 20 Hz, a cue made much louder.
 // Reads the synth voice lists in Node (no browser). New file only.
 import test from 'node:test';

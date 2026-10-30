@@ -1,4 +1,4 @@
-// The lobby's wall leaderboard (w31): the selected game's ALL-TIME top 10 and the player's own line.
+// The lobby's wall leaderboard: the selected game's ALL-TIME top 10 and the player's own line.
 // Data comes from the same board Starfall's table reads: the remote board when one is configured (or the test-only
 // ?lb= localhost override), else this device's local board. One refresh per lobby visit, never per frame: the draw
 // code only reads the strings built here when an answer arrives.
@@ -71,7 +71,7 @@ export function createLobbyBoard({ lb, game = 'starfall', playerId = async () =>
 }
 
 // The board the lobby reads in the browser: the same choice Starfall's main.js makes (remote when configured or the
-// test-only ?lb= localhost override, else the local board), with the same 10 s read gate after a failure (LOW11).
+// test-only ?lb= localhost override, else the local board), with the same 10 s read gate after a failure.
 export function browserBoard(search) {
   const store = localStorageAdapter('arcade:');
   const local = createLeaderboard({ storage: store });

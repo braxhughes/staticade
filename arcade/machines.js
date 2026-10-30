@@ -1,4 +1,4 @@
-// The arcade floor's machine list, left to right: only the games we plan to make (w31).
+// The arcade floor's machine list, left to right: only the games we plan to make.
 // Starfall is the only playable cabinet; the rest are lit COMING SOON machines for original games in classic genres.
 // Names and palettes are our own. `attract` picks the idle animation drawn on the tube.
 import { COL } from '../games/starfall/sprites.js';

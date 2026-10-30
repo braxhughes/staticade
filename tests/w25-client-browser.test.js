@@ -1,4 +1,4 @@
-// Card 3b (w25-client) through the real entry point: starfall.html in headless Chrome (Playwright, system Chrome)
+// The remote board client through the real entry point: starfall.html in headless Chrome (Playwright, system Chrome)
 // against the real leaderboard Worker (server/dev-server.mjs, SQLite file), remote switch pointed at it with the
 // test-only ?lb= override. Real runs are played to game over (autoFire records them like played frames).
 // Scope items: 1 local first, 2 queue + exactly once, 3 ranked daily kept, 8 rating line, 9 share, 10 switch.
@@ -74,7 +74,7 @@ describe('card 3b against the real dev server', { concurrency: true }, () => {
       await until(page, () => SF.lastRemote() && SF.lastRemote().code === 'bad_name');
       assert.equal(await page.evaluate(() => SF.status()), 'NOT SENT: BAD NAME');
       assert.equal(await page.evaluate(() => SF.queue().length), 0);
-      // MED1: the local board keeps one best entry per player, so a run that scores no better than ACE's never shows there.
+      // the local board keeps one best entry per player, so a run that scores no better than ACE's never shows there.
       // The refused run is proved saved by the store of every run (unique false), and it was already there when the request went out.
       assert.ok(localAtSend2 && localAtSend2.some(r => r.name === 'WTF'), 'the refused run was saved locally before the request');
       assert.ok((await page.evaluate(() => SF.scores('all', undefined, false))).some(r => r.name === 'WTF'), 'kept in the local store');

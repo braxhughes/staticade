@@ -1,6 +1,6 @@
 // D1 helpers (db.prepare(sql).bind(...).run()/all()/first()). Schema: server/schema.sql.
 // The Worker uses: result claims (exact and near copies), held near copies and rate limit counters. Boards,
-// players, replays and trophies are rows in server/boards.js (w22). d1Storage below is the general key-value
+// players, replays and trophies are rows in server/boards.js. d1Storage below is the general key-value
 // adapter leaderboard/api.js can run on; the Worker no longer uses it.
 // Every value is bound with bind(); no input is ever pasted into SQL text.
 
@@ -71,7 +71,7 @@ export async function claimResult(db, { game, board, hash, score, t, sig = null,
 // Near copies. Looks at up to `limit` stored runs each side of `score` (between half and double it) on this game
 // and board, live claims and finished ones (a claim older than staleMs that never finished is ignored), and returns
 // the most similar one if it is at least NEAR alike, else null. Call it right after this run's own claimResult.
-// No lock (w22, MED4): only claims made BEFORE this run's claim (smaller seq) count. Two copies sent at once: the
+// No lock: only claims made BEFORE this run's claim (smaller seq) count. Two copies sent at once: the
 // later claim always sees the earlier one (it was inserted first) and is held; the earlier one never waits on the
 // later. So at most one of them goes on the board, as with the old per-board lock.
 export const nearLockName = (game, board) => `results:${game}:${board}`; // kept for callers of the old lock name

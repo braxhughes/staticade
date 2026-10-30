@@ -1,4 +1,4 @@
-// w13-tests (V4 re-review MED-2 and LOW): the tether burst had a floor on its spread but no ceiling, and the dot
+// the tether burst had a floor on its spread but no ceiling, and the dot
 // size floor was 0.3 while the real size is 1.4. New file only. fx.js uses Math.random, so every check is a bound
 // held over many bursts, not a stored value.
 import test from 'node:test';

@@ -1,4 +1,4 @@
-// Boards, players, replays and trophies as SQL rows (w22: HIGH2, MED4, MED7, MED8). Schema: server/schema.sql.
+// Boards, players, replays and trophies as SQL rows. Schema: server/schema.sql.
 // No lock anywhere: one submit is one db.batch (one transaction in D1), and every write in it is a single atomic
 // statement (INSERT ... ON CONFLICT ... WHERE excluded.score > score), so submits for different players never wait
 // on each other and two runs of one player can only both raise their rows.
@@ -31,7 +31,7 @@ export async function isSeen(db, game, rhash) {
 // null when that is below the cap (the run is not kept there).
 async function placeOn(db, { game, ver, board, pid, score, t }) {
   // A full board and a score below its lowest row (most submits once a board is full): every row there is above
-  // it, so the rank is known from three single-row reads instead of a walk of up to BOARD_CAP rows (w22 fix, MED1).
+  // it, so the rank is known from three single-row reads instead of a walk of up to BOARD_CAP rows.
   const low = await db.prepare('SELECT (SELECT n FROM board_size WHERE game = ? AND ver = ? AND board = ?) AS n, ' +
     '(SELECT score FROM board WHERE game = ? AND ver = ? AND board = ? ORDER BY score ASC, t DESC, entry DESC LIMIT 1) AS lo, ' +
     '(SELECT 1 FROM board WHERE game = ? AND ver = ? AND board = ? AND pid = ?) AS own')
@@ -50,7 +50,7 @@ async function placeOn(db, { game, ver, board, pid, score, t }) {
 // Players whose avg5 is 0 are left out of the field (avg5 > 0): a run of score 1..4 averages 0, and a griefer with
 // many such players must not lift everyone above them. A player at 0 is still rated, against the others.
 // `players` is everyone rated this season (zero averages included): it is a head count for display, not the field.
-// Read from the 'rank:' counts in board_size (server/schema.sql), not from ratings (w22 fix, MED1): "below" is, at
+// Read from the 'rank:' counts in board_size (server/schema.sql), not from ratings: "below" is, at
 // each of the 5 levels, the sum of the lower siblings of the avg5's prefix there, so this reads at most about
 // 5 x 63 + 3 rows whatever the season's size, and gives exactly the counts a scan of ratings would.
 export const HIST_LEVELS = 5, HIST_BITS = 6;
@@ -195,7 +195,7 @@ export async function readReplay(db, entry) {
     version: r.version, replay: r.replay, date: r.date, stats };
 }
 
-// POST /admin/hide: take an entry off every board (all versions), and out of trophies (w22 fix, MED3): its run leaves
+// POST /admin/hide: take an entry off every board (all versions), and out of trophies: its run leaves
 // the player's best 5, their avg5 is worked out again from the runs left (so the percentile counts move with it, by
 // the ratings triggers), and a player with no run left this season is unrated again (back to their carry). If the
 // hidden run was their all-time best, best drops to the best run left in their best 5. All of it is one batch.

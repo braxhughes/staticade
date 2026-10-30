@@ -1,4 +1,4 @@
-// w30b: the w30 review HIGH. loop.stop() only stops the next rAF; the steps the current frame already bought still run.
+// loop.stop() only stops the next rAF; the steps the current frame already bought still run.
 // If Esc is read on a long frame, the rest of that frame's ticks ran with Starfall gone: the finished cabinet intro
 // called end() -> setApp('title') -> Starfall's title music over the lobby, and its audio context kept running.
 // This reaches the title the real way (coin into the cabinet, not SF.skip()), then presses Esc inside a rAF callback

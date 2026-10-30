@@ -97,7 +97,7 @@ export function dollyPose(from, mx, q, out) {
   return out;
 }
 
-// ---------- w31 floor layout: the selected cabinet pulled out on the right, its wall board on the left ----------
+// ---------- floor layout: the selected cabinet pulled out on the right, its wall board on the left ----------
 // Cabinet i stands with its back on the wall (z = WALL_Z) at x = floorX(i) + rowShift(i - pos). Only the selected one is
 // pulled out: swung open about a hinge at its back-left corner by CAB_ANGLE (front turned toward the left of the screen,
 // right side panel showing). Its neighbours stand flush against the wall facing the camera, like the v1 row, and peek in

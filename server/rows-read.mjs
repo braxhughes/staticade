@@ -1,4 +1,4 @@
-// Counts the database rows one submit and one /rank read touch, for seasons of N players (w22 fix, MED1).
+// Counts the database rows one submit and one /rank read touch, for seasons of N players.
 // Local only (Node and the sqlite3 command line tool); the Worker never imports this.
 //   node server/rows-read.mjs [--root <repo dir>] [--json] N1 N2 ...      (default 1000 13000 100000)
 // How: it builds a season of N rated players straight in SQL (one run each, the all-time and season boards full),

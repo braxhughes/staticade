@@ -1,4 +1,4 @@
-// w31 lobby v2, the Node half: the three-machine floor, the wall board's data (lobby-board.js, driven with a fake
+// Lobby v2, the Node half: the three-machine floor, the wall board's data (lobby-board.js, driven with a fake
 // board), and the swing / floor camera math. The browser half is tests/w31-lobby-browser.test.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

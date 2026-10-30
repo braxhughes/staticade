@@ -1,4 +1,4 @@
-// w13-tests (S12 guard review LOW2): the five main.js wiring mutants that survived w10-s12-guard.
+// the five main.js wiring mutants that survived the first guard tests.
 //   idle timer not reset by input (main.js updTitle), "PRACTICE: NOT RANKED" label removed (runLabel), last name not stored
 //   (confirmEntry kv.set), claim before the stale check (afterStep), runInfo().claimed forced false.
 // Same harness as tests/s12-wiring.test.js (own server, headless Chrome, own context per scenario, all at once). New file only.

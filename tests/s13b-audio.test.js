@@ -179,7 +179,7 @@ test('intensity follows heat: the engine is told when heat changes, not every fr
   noProblems(o, 'heat');
 });
 
-// ---------- fix round (MED1-MED4, LOW3): stalls, the sim beat grid, the intensity value ----------
+// ---------- stalls, the sim beat grid, the intensity value ----------
 // The main thread is blocked for ms (a busy page): the audio clock runs on, the sim's catch-up is clamped at 250 ms, so drift jumps.
 const BLOCK = ms => page => page.evaluate(m => { const t = performance.now(); while (performance.now() - t < m) { /* busy */ } }, ms);
 // range [lo, hi] (optional): the drift the stall must leave, read when it has settled (see below). A stall of a given length leaves a
@@ -299,7 +299,7 @@ test('the bind is on the sim beat grid: anchor is a multiple of 25, pos matches 
   await ctx.close();
 });
 
-// MED4: the value, not the call count
+// the value, not the call count
 test('the engine intensity equals SF.info().intensity (heat / 100), at heat 0 and after heat rises', async () => {
   const { ctx, page, problems } = await open();
   await page.evaluate(() => { SF.god(); SF.start(1); });

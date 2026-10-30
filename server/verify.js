@@ -2,7 +2,7 @@
 // the replay on the same sim the game ships and keeps what the sim says.
 //
 // Order (cheap checks first, so a bad claim never costs a full re-sim):
-//   1. header: format r1, game, GAME_VERSION (current only), mode, seed, daily day and window (card 3c: with
+//   1. header: format r1, game, GAME_VERSION (current only), mode, seed, daily day and window (with
 //      DAILY_SECRET, the server's seed for that day, today or yesterday only, and no more frames than real time
 //      since the run's ticket)
 //   2. frame count, read from the run lengths without building the frame array (replay_too_long)
@@ -52,7 +52,7 @@ export function countFrames(body, cap) {
 export function makeServerVerifier({ now = Date.now, maxFrames = MAX_RUN_FRAMES } = {}) {
   const strict = makeVerifyReplay({ now });
   // c: the cleaned fields from validateSubmission (leaderboard/api.js).
-  // daily (card 3c): { seed, issuedAt } when DAILY_SECRET is set and the run's ticket checked out (server/worker.js);
+  // daily: { seed, issuedAt } when DAILY_SECRET is set and the run's ticket checked out (server/worker.js);
   // undefined without a secret, which keeps the public seed and the plus-or-minus 1 day window exactly as before.
   return function verifyRun(c, daily) {
     const parts = c.replay.split('~');
@@ -60,7 +60,7 @@ export function makeServerVerifier({ now = Date.now, maxFrames = MAX_RUN_FRAMES 
     const [, rGame, rVersion, seed36, rMode, body] = parts;
     if (c.game !== GAME_ID || rGame !== GAME_ID) fail('bad_game', `this server checks ${GAME_ID} runs only`);
     if (rVersion !== GAME_VERSION || String(c.version) !== GAME_VERSION) {
-      // MED8: the client shows this as "new version, reload" (a page left open across a deploy runs the old game).
+      // the client shows this as "new version, reload" (a page left open across a deploy runs the old game).
       fail('wrong_version', `new version, reload: the server takes ${GAME_ID} ${GAME_VERSION}, this run is ${rVersion} (claimed ${c.version})`);
     }
     if (MODE_HEADER[c.mode] !== rMode) fail('bad_mode', `claimed mode ${c.mode} does not match the replay (${rMode})`);
@@ -69,7 +69,7 @@ export function makeServerVerifier({ now = Date.now, maxFrames = MAX_RUN_FRAMES 
       if (typeof c.dayKey !== 'string') fail('bad_day', 'a daily run needs its dayKey');
       let ds; try { ds = dailySeed(c.dayKey); } catch { fail('bad_day', 'dayKey must be YYYY-MM-DD'); }
       if (daily) {
-        // card 3c, DAILY_SECRET set: the seed the server issued for that day, and today or yesterday only (UTC)
+        // DAILY_SECRET set: the seed the server issued for that day, and today or yesterday only (UTC)
         if (daily.seed !== c.seed) fail('bad_seed', `seed is not the server's daily seed of ${c.dayKey}`);
         const back = Date.parse(todayUTC(now()) + 'T00:00:00Z') - Date.parse(c.dayKey + 'T00:00:00Z');
         if (!(back === 0 || back === DAY_MS)) fail('bad_day', `daily runs are taken only for today or yesterday (UTC); ${c.dayKey} is not`);
@@ -81,7 +81,7 @@ export function makeServerVerifier({ now = Date.now, maxFrames = MAX_RUN_FRAMES 
     }
     const frames = countFrames(body, maxFrames);
     if (frames > maxFrames) fail('replay_too_long', `replay runs over ${maxFrames} frames`);
-    // card 3c: a ticketed daily cannot hold more play than real time since its ticket (plus TICKET_SLACK_S)
+    // a ticketed daily cannot hold more play than real time since its ticket (plus TICKET_SLACK_S)
     if (daily && c.mode === 'daily' && frames > maxFramesSince(daily.issuedAt, now())) {
       fail('bad_ticket', `the run is ${frames} frames, longer than the time since its ticket`);
     }

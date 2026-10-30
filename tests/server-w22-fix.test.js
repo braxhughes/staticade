@@ -1,5 +1,5 @@
-// w22 fix round (card 3a review, depth 1): MED1 percentile counts (rows read flat as the season grows), MED2 board
-// cache key and clamps, MED3 hide also takes the run out of trophies, LOW5 the three reviewer mutants that survived
+// Percentile counts (rows read flat as the season grows), board
+// cache key and clamps, hide also takes the run out of trophies, the three mutants that survived
 // (skipped-season carry through the Worker, ties in the server percentile, placement tie order).
 // Seeding many players goes straight to server/boards.js storeRun (the function the Worker calls); the Worker paths
 // go through worker.fetch on the node:sqlite D1 shim.

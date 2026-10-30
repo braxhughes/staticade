@@ -38,7 +38,7 @@ Measured with `node server/dedupe-measure.mjs` (2 minutes, Node):
 | Runs compared | How alike (share of scoring moments that match) |
 |---|---|
 | Honest runs on the same seed: 400 runs, 15,800 pairs (one pair even has the same score) | at most 0.32; none at 0.6 or more |
-| One-bit edits like the reviewer's (all 19 frames that keep the score and change the state) | all held, none on the board (test `MED1: the reviewer's one-bit copies...`) |
+| One-bit edits of a real run (all 19 frames that keep the score and change the state) | all held, none on the board (tested in `tests/server-dedupe.test.js`) |
 | Copies with 1, 5 or 40 random bit flips that still end cleanly (3 victims, 600 tries each) | at least 0.96: all held |
 | The same flips "repaired" (cut or pad the ending so the run is finished; scripted victims of 34k to 64k points) | 7 to 191 of 200 get under 0.6. Those changed early and play out differently; against these weak scripted victims some even score more, because they are new runs, not copies |
 | Repaired copies of strong runs (state-reading bot, 230k to 330k points; 360 tries) | the ones that get in score at most 45% of the run they copied |
@@ -77,7 +77,7 @@ Look at `alike`. Close to 1.0 is a copy: leave it. Between 0.6 and 0.8 might be 
 
 Released runs stay in `flagged` with `status = 'released'` (the record of what you let in). At most 500 runs wait at once (`LIMITS.heldCap`, about 100 MB at worst); past that a near copy is refused with `near_duplicate`.
 
-## The Daily's seed and ticket (card 3c)
+## The Daily's seed and ticket
 
 **What this is:** how the server makes the Daily's level something nobody can know before the day starts, and ties each daily run to a time.
 
@@ -89,14 +89,14 @@ Released runs stay in `flagged` with `status = 'released'` (the record of what y
 | Real time | A daily may hold at most (seconds since its ticket + 10) x 60 frames. The 10 s covers two Worker copies whose clocks differ a little. An honest run always fits: the game asks for the ticket before the run starts and plays 60 frames a second |
 | Day window | Today or yesterday (UTC, server clock), never tomorrow. A run started at 23:59 and sent at 00:01 still counts for its day |
 | Rate limit | 60 `/daily` calls per address per 10 minutes (a real player starts at most about 11 dailies in that time). Each answer is signed for one player, so it cannot be cached |
-| No secret (dev, tests) | `/daily` answers the public seed, `ticket: null`, `dailySecret: false`, and daily runs are checked exactly as before card 3c (public seed, plus or minus 1 day, no ticket) |
+| No secret (dev, tests) | `/daily` answers the public seed, `ticket: null`, `dailySecret: false`, and daily runs are checked exactly as before Daily tickets (public seed, plus or minus 1 day, no ticket) |
 | Secret set but under 32 characters | A deploy mistake: `/daily` and every submit answer 500 `server_error` (the Worker log says why), rather than quietly falling back to the public seed |
 
 **What a ticket does not prove (the honest limit).** A ticket proves a run is no older than its ticket, not that it was played live. A player can fetch the day's seed, practise it all day (fetching a new ticket for each try), and send only their best run. The first-daily-counts rule is still kept in the browser (see "What is still trusted to the client"). What the secret does stop: knowing or practising a day's level before that day starts, and sending a daily that would take longer to play than the time since its ticket.
 
-## Boards as rows (w22)
+## Boards as rows
 
-**What this is:** how scores are stored since card 3a, and why it stays cheap as the game grows.
+**What this is:** how scores are stored, and why it stays cheap as the game grows.
 
 | Thing | Value |
 |---|---|
@@ -132,7 +132,7 @@ npx wrangler d1 execute arcade-lb --remote --command "DELETE FROM board WHERE bo
 
 **Replay pruning is automatic.** A replay is deleted the moment the last board row pointing at it goes: a better run replaced it, the cap pushed it out, or `POST /admin/hide` (triggers `board_removed` and `board_replaced` in `schema.sql`). A run that lands on no board at all never keeps its replay (last statement of the submit batch). The tests check that no replay is left that no board lists. So no separate prune job is needed.
 
-### Database reads (w22 fix, MED1)
+### Database reads
 
 **What this is:** how many database rows one submit and one `/rank` read, as the season grows. D1 bills rows read.
 
@@ -161,7 +161,7 @@ The replay check needs Workers Paid anyway ("Re-sim CPU" below), and its include
 
 ### Migration note
 
-This is a **fresh schema**. There is no live data yet (nothing has been deployed), so nothing is migrated. The old one-JSON-value-per-board layout in `kv` is no longer written by the Worker; `kv` and `locks` stay only because `d1-adapter.js` `d1Storage` (a general key-value adapter) still uses them. If a database was ever created from the older `schema.sql`, drop it and create it again (Go live, steps 4 and 6). The percentile counts (w22 fix) fill themselves once from `ratings` when `schema.sql` is applied to a database that has ratings but no counts; applying it again never counts anyone twice.
+This is a **fresh schema**. There is no live data yet (nothing has been deployed), so nothing is migrated. The old one-JSON-value-per-board layout in `kv` is no longer written by the Worker; `kv` and `locks` stay only because `d1-adapter.js` `d1Storage` (a general key-value adapter) still uses them. If a database was ever created from the older `schema.sql`, drop it and create it again (Go live, steps 4 and 6). The percentile counts fill themselves once from `ratings` when `schema.sql` is applied to a database that has ratings but no counts; applying it again never counts anyone twice.
 
 ## Taking an entry off the boards
 
@@ -171,7 +171,7 @@ This is a **fresh schema**. There is no live data yet (nothing has been deployed
 2. Find the entry id: it is the `id` of the row in `GET /board`.
 3. `curl -s -X POST https://arcade-lb.<you>.workers.dev/admin/hide -H "authorization: Bearer <token>" -H 'content-type: application/json' -d '{"entryId": "<id>"}'`
 4. It answers 200 `{ ok, hidden, rows, runs }` (`rows`: how many boards it was on; `runs`: 1 if it was one of the player's best 5 this season), or 404 if neither. The entry leaves every board and version, and its replay goes too. A record stays in table `hidden`.
-5. **It also leaves trophies** (w22 fix). The run leaves the player's best 5, their average is worked out again from the runs left (a missing run counts as 0, as always), and everyone else's percentile moves with it at once. A player with no run left this season is unrated again (back to their carry from last season). If it was their all-time best, `best` on `/rank` falls to the best run left in their best 5.
+5. **It also leaves trophies**. The run leaves the player's best 5, their average is worked out again from the runs left (a missing run counts as 0, as always), and everyone else's percentile moves with it at once. A player with no run left this season is unrated again (back to their carry from last season). If it was their all-time best, `best` on `/rank` falls to the best run left in their best 5.
 6. **Caches:** the hide purges this data centre's cached board windows (see "Edge cache purge" above); a board read already cached at another edge can still show the entry for up to 10 s, and `GET /replay/<id>` for up to 300 s (5 minutes), because those answers are `public, max-age`. After that it is gone everywhere.
 
 The player can still play and submit new runs; the same replay or result again is refused as a duplicate. If the name is the problem, add it to `server/names.js` and redeploy.
@@ -198,7 +198,7 @@ Every error is `{ ok: false, error: "<code>", message }`.
 | `boards.js` | Boards, players, replays and trophies as SQL rows; the one-batch submit |
 | `names.js` | The 3-letter name check and its blocklist |
 | `verify.js` | The replay check (header checks, then the sim, then the game's own strict verifier must agree) |
-| `daily.js` | Card 3c: the Daily's seed and ticket from `DAILY_SECRET` (WebCrypto HMAC-SHA256) |
+| `daily.js` | the Daily's seed and ticket from `DAILY_SECRET` (WebCrypto HMAC-SHA256) |
 | `d1-adapter.js` | result claims and near-copy lookup, rate counters, and `d1Storage` (a key-value adapter the Worker no longer uses) |
 | `dedupe.js` | near-copy check: a run's signature and how alike two runs are |
 | `dedupe-measure.mjs` | Measures that check on honest runs and edited copies (numbers above) |
@@ -251,7 +251,7 @@ Steps 3 to 6 run in a terminal **inside the `server` folder** (`cd server` from 
 5. `cp wrangler.toml.example wrangler.toml`, paste the id, and set `ALLOWED_ORIGIN` to the game's address (for example `https://<your-project>.pages.dev`).
 6. `npx wrangler d1 execute arcade-lb --remote --file=schema.sql`, then `npx wrangler deploy`. It prints the Worker's address, like `https://arcade-lb.<you>.workers.dev`.
 5b. **The Daily's secret (required).** `npx wrangler secret put DAILY_SECRET` and paste the output of `openssl rand -hex 32` (64 characters; at least 32 are required). It lives only in Cloudflare, never in the repo. Why: without it the Daily's seed is public, so anyone can compute tomorrow's level today and practise it, and daily runs need no ticket. Check after step 6: `curl -s -H 'x-player-id: checkcheck' 'https://arcade-lb.<you>.workers.dev/daily?game=starfall'` must show `"dailySecret":true`. Never change the secret during a day: every ticket and seed of today and yesterday would stop matching, and those dailies would be refused.
-6b. **Deploy the site and the Worker together, every time the game version changes.** The Worker re-simulates runs with its own copy of the game, so it only takes runs of its own `GAME_VERSION`. Boards are kept per major version. If the site ships a new game first, every new run is refused (`wrong_version`); if the Worker ships first, every player on the old page is refused. Deploy both in the same few minutes. A page left open across a deploy gets `wrong_version` with a message that starts "new version, reload"; the game shows it so the player reloads (card 3b).
+6b. **Deploy the site and the Worker together, every time the game version changes.** The Worker re-simulates runs with its own copy of the game, so it only takes runs of its own `GAME_VERSION`. Boards are kept per major version. If the site ships a new game first, every new run is refused (`wrong_version`); if the Worker ships first, every player on the old page is refused. Deploy both in the same few minutes. A page left open across a deploy gets `wrong_version` with a message that starts "new version, reload"; the game shows it so the player reloads.
 7. **The one config line:** set `REMOTE_LEADERBOARD_URL = 'https://arcade-lb.<you>.workers.dev'` in `server/client.js`. The game already reads it (`pickLeaderboard` in `games/starfall/main.js`); while it is empty the game keeps its local board. Set it **in the copy of the site you deploy, not in the repo**: `tests/server-client.test.js` checks that the repo copy is empty.
 8. Optional, recommended: in the Cloudflare dashboard, Security > WAF > Rate limiting rules, add one rule for the Worker's `/submit` path (for example 60 requests per minute per IP, block for 10 minutes). It stops a flood at the edge before it costs Worker CPU. The server's own limits (steps 1 and 4 in the first table) still apply.
 8b. **Recommended: a rate limit on reads.** The Worker has no read limit of its own. Add a rate limiting rule for `GET` requests whose path is `/board` or `/rank` (for example 120 requests per minute per IP, block for 1 minute). The game reads a board or a rank a few times a minute at most, so no real player meets it; a script hammering `/rank` (about 60 rows each, never cached) is stopped at the edge. If your plan allows only one rule, make it one rule covering `/submit`, `/board` and `/rank` at the read numbers.
@@ -262,7 +262,7 @@ Steps 3 to 6 run in a terminal **inside the `server` folder** (`cd server` from 
 | Thing | Why it is still trusted | What would fix it |
 |---|---|---|
 | **Who you are** (`playerId`) | No accounts. Anyone can make a new id, so trophies and "best per player" are per id, not per person | Logins |
-| **The one ranked daily attempt** | "First started daily run counts" is kept in the browser. The server cannot see runs that were never sent, so a player can retry the daily and send only the best. Card 3c's ticket does not change this: it proves a run is no older than its ticket, not that it was the first or played live | Count tickets per player per day on the server and take only the first ticket's run (costs a row per `/daily`) |
+| **The one ranked daily attempt** | "First started daily run counts" is kept in the browser. The server cannot see runs that were never sent, so a player can retry the daily and send only the best. The Daily ticket does not change this: it proves a run is no older than its ticket, not that it was the first or played live | Count tickets per player per day on the server and take only the first ticket's run (costs a row per `/daily`) |
 | **Who played the inputs** | A replay proves the inputs make the score, not that a human typed them. A bot or a tool-assisted run passes | Nothing cheap; watch the top of the board |
 | **Free-play seeds** | The client picks the seed, so a player can practise one seed until it is perfect | Server-issued seeds |
 
@@ -276,4 +276,4 @@ Steps 3 to 6 run in a terminal **inside the `server` folder** (`cd server` from 
 - Not checked on real D1 yet: the triggers and `INDEXED BY ratings_pid`. Check both on the first deploy (submit twice, read `board_size`).
 - Held near copies (`flagged`) keep their whole replay until you delete them; at most 500 wait at once.
 - Read calls (`/board`, `/rank`, `/replay`) have no rate limit in the Worker (`/daily` has one: 60 per address per 10 minutes); add the WAF rule (Go live, step 8b). `/board` is cached in at most 10 windows per board, so it is cheap even without it.
-- There is no submit lock any more (w22): concurrent submits only race on single atomic statements.
+- There is no submit lock any more: concurrent submits only race on single atomic statements.

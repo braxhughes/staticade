@@ -1,4 +1,4 @@
-// w17 tests-only slice, group 3: V2 review survivors. Hound: HOUND_LIFE 600, HOUND_NEAR 16, HOUND_HIT 7, the shadow ring
+// Test gaps, group 3: surviving V2 mutants. Hound: HOUND_LIFE 600, HOUND_NEAR 16, HOUND_HIT 7, the shadow ring
 // filled with the ship's x at stage start. Tetherling: LINE_BLINK_Y 130, the P.inv guard on the line, the refall threshold
 // (H + 16). Boundaries are tested one half-unit either side so a +-1 change to the constant is seen. New file only.
 import test from 'node:test';

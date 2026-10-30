@@ -1,4 +1,4 @@
-// w22 griefer fix: players whose best-5 average is 0 are left out of the percentile field (server and local), so a
+// players whose best-5 average is 0 are left out of the percentile field (server and local), so a
 // pile of tiny runs (score 1..4 on the server, where score 0 is refused; score 0 locally) cannot lift anyone.
 // A lone player is still Gold III (the 20 imaginary players), and a player at 0 is still rated.
 import test from 'node:test';

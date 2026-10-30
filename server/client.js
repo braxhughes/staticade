@@ -3,7 +3,7 @@
 //
 // The switch is one config value, REMOTE_LEADERBOARD_URL below. While it is '' the game keeps its local
 // leaderboard exactly as today. pickLeaderboard(local) returns the local one unless the URL is set.
-// games/starfall/main.js wires pickLeaderboard (card 3b): submits always go to the local board first, then to this
+// games/starfall/main.js wires pickLeaderboard: submits always go to the local board first, then to this
 // client through a retry queue (games/starfall/submit-queue.js).
 // Every failure is a LeaderboardError with a code; errors from an HTTP answer also carry its `status` (so a 5xx is
 // known to be worth retrying). A call that has no answer after `timeoutMs` fails with code 'timeout'.
@@ -68,7 +68,7 @@ export function createRemoteLeaderboard({ url, fetch: fetchFn = (...a) => global
       (await (fresh ? call(`/board?${qs({ game, board, key, limit, offset, unique, _: now() })}`, { cache: 'no-store' })
         : call(`/board?${qs({ game, board, key, limit, offset, unique })}`))).rows,
     getRank: ({ game, playerId } = {}) => call(`/rank?${qs({ game, playerId })}`),
-    // card 3c: today's Daily from the server ({ dayKey, seed, ticket, issuedAt, dailySecret }). The playerId goes in a
+    // today's Daily from the server ({ dayKey, seed, ticket, issuedAt, dailySecret }). The playerId goes in a
     // header, not the URL (the ticket is signed for it), so it never lands in a log or a referrer.
     getDaily: ({ game, playerId } = {}) => call(`/daily?${qs({ game })}`, playerId ? { headers: { 'x-player-id': String(playerId) } } : undefined),
     getReplay: (id) => (typeof id === 'string' && id ? call(`/replay/${encodeURIComponent(id)}`) : Promise.resolve(null)),

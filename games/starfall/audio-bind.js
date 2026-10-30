@@ -169,7 +169,7 @@ export function createAudioBind(opts = {}) {
       if (muted) { audio.stopMusic(CUT); playing = null; jingleOn = null; waiting = false; anchored = false; }
       else { held = false; clock(); startWant(); }
     },
-    // w30: a suspend() sent while the very first resume() was still in flight can lose the race; asked again once settled
+    // a suspend() sent while the very first resume() was still in flight can lose the race; asked again once settled
     settle() { const c = audio.ctx; if (unlocked && c && c.state === 'running' && (paused || hidden || held)) c.suspend(); },
     pause(on) { paused = !!on; wallN = 0; clock(); }, // wallN = 0: the wall-clock fit starts over after a pause
     // tab hidden (true) or visible again (false)

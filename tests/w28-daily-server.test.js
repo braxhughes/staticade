@@ -1,4 +1,4 @@
-// Card 3c (w28-daily): the Daily's seed comes from the server's secret, a daily submit needs the ticket GET /daily
+// the Daily's seed comes from the server's secret, a daily submit needs the ticket GET /daily
 // gave, a run may not hold more play than real time since that ticket, and only today's or yesterday's daily (UTC)
 // is taken. Through the Worker's real entry point (worker.fetch) on node:sqlite, with a clock the test moves.
 // The secret is random per run of this file; it is never written anywhere.
@@ -153,7 +153,7 @@ test(`real time: a run longer than the time since its ticket plus ${TICKET_SLACK
   assert.deepEqual([tooSoon.r.status, tooSoon.r.body.error], [422, 'bad_ticket'], JSON.stringify(tooSoon.r.body));
   const inSlack = await ticketThenSubmit({ e, c: clocked(t), t, after: run => playTime(run) - (TICKET_SLACK_S - 2) * 1000 });
   assert.equal(inSlack.r.status, 201, 'within the stated slack: ' + JSON.stringify(inSlack.r.body));
-  // the reviewer's attack: a 20-minute daily sent 1 minute after its ticket (refused before any re-sim)
+  // an attack: a 20-minute daily sent 1 minute after its ticket (refused before any re-sim)
   const c = clocked(t), p = pid();
   const d = (await daily(c.W, e, { player: p })).body;
   const rec = createRecorder(64);

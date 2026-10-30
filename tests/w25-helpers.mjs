@@ -1,4 +1,4 @@
-// Shared helpers for the card 3b browser tests (tests/w25-*-browser.test.js): a static server for the game, the real
+// Shared helpers for the remote board browser tests (tests/w25-*-browser.test.js): a static server for the game, the real
 // leaderboard dev server (server/dev-server.mjs) as a child process that can be killed and started again on the same
 // port and database file, and page helpers that drive window.SF. Not a test file itself (no .test.js).
 import http from 'node:http';
@@ -10,7 +10,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const SHOT_DIR = process.env.W25_SHOT_DIR || null; // set to save the docs/w25 screenshots
+export const SHOT_DIR = process.env.W25_SHOT_DIR || null; // set to save the screenshots
 export const WAIT = { timeout: 30000 };
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json', '.css': 'text/css' };
 

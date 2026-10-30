@@ -1,9 +1,9 @@
-// Card w29-final-fixes through the real entry point: starfall.html in headless Chrome against the real Worker
+// Fresh-board checks through the real entry point: starfall.html in headless Chrome against the real Worker
 // (server/dev-server.mjs), reached through a small counting proxy so a test sees which /board and /submit calls really
 // went out. No page.route: Playwright turns the HTTP cache off while a route is set, and the bug is a cache bug.
-// MED-1: the table read after the player's own submit skips the browser cache; ordinary reads keep it.
-// LOW-1: the share text carries the server's league, or none before the server answered.
-// w29 fix 2, LOW-2: the table opened again from the menu inside the 10.5 s fresh window still has the player's row.
+// the table read after the player's own submit skips the browser cache; ordinary reads keep it.
+// the share text carries the server's league, or none before the server answered.
+// the table opened again from the menu inside the 10.5 s fresh window still has the player's row.
 import { describe, test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -18,7 +18,7 @@ before(async () => {
 after(async () => { if (browser) await browser.close(); if (web) web.server.close(); });
 
 // forwards to the dev server, records every request, and can hold /submit answers until release().
-// w29 fix 2, LOW-3: an upstream fetch that fails (a busy machine) is tried once more, then answered 502 (which the
+// an upstream fetch that fails (a busy machine) is tried once more, then answered 502 (which the
 // game treats as a failed read or send and retries), never left as an unhandled rejection.
 async function proxy(target) {
   const log = [];

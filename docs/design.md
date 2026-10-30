@@ -722,7 +722,7 @@ The row-to-lever table lives in `sim/twists.js`. Wheel (old stage 12) stays drop
 | Quick Lantern | Each kill adds 1.25 lantern dots instead of 1, so 8 kills fill it instead of 10 (grazes unchanged) |
 | Third Shot | **With no power-up held**, 3 base volleys on screen per ship instead of 2. Power-up caps stay 2 (the seam applies `S.shotCapPer` only when `S.power === ''`) |
 | Ember Memory | Every kill's chain window is 30 frames longer (90 to 120, LANCE 45 to 75; an ARC jump kill grants no window, 4.2); the graze cap follows |
-| Slow Glyph | The glyph waits at your row for **two full cycles** instead of one (Z1 450, Z2 540, Z3 630 frames; every type in reach for 90 frames), and a glyph from a low drop waits too, as long as it was dropped above your row (y < 274; below it, it falls through). The cycle stays 45 frames a type. (MED5: the old "every 75 frames" made each type slower to come round and gave no real benefit once 4.0a exists) |
+| Slow Glyph | The glyph waits at your row for **two full cycles** instead of one (Z1 450, Z2 540, Z3 630 frames; every type in reach for 90 frames), and a glyph from a low drop waits too, as long as it was dropped above your row (y < 274; below it, it falls through). The cycle stays 45 frames a type. (the old "every 75 frames" made each type slower to come round and gave no real benefit once 4.0a exists) |
 | Spare Spark | Your next death keeps your power-up and its timer (used up on that death) |
 
 - **Spare Spark order:** taking it sets `S.spareArmed = 1`. The power system's 'death' handler checks it first: if armed, it sets `spareArmed = 0` and keeps `S.power` and `S.powerT` (the echo queue is still cleared); otherwise it clears the power as today. Both live in V3's files, so no cross-system order is needed.

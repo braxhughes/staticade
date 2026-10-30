@@ -1,4 +1,4 @@
-// S13a fix round (w14-s13a-fix): the review findings and the surviving mutants, driven through the real starfall.html in
+// Audio checks for review findings and surviving mutants, driven through the real starfall.html in
 // headless Chrome (system Chrome) with the page's real main.js, keyboard and window.SF. Real stage clears, a real boss kill,
 // a real boss timeout, a real game over and a real STARLIGHT stage are played with SF.autoFireLoud (sim frames with sound on).
 // Headless Chrome cannot be listened to: this pins what starts, when, and which track, not how it sounds.

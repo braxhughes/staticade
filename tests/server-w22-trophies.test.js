@@ -1,4 +1,4 @@
-// w22 MED7 on the server: trophies from the average of a player's best 5 runs this season, rated against
+// On the server: trophies from the average of a player's best 5 runs this season, rated against
 // everyone (percentile -> league and tier). A run outside the best 5 changes nothing; a season reset keeps half.
 // Real runs through worker.fetch where a few are enough; seeding many players goes through storeRun directly.
 import { test, before } from 'node:test';

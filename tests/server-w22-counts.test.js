@@ -1,4 +1,4 @@
-// w22 fix2 (card 3a red-proof): the 'rank:' percentile counts in board_size must never drift from ratings.
+// the 'rank:' percentile counts in board_size must never drift from ratings.
 // A seeded random sequence of submits (values at and around every level edge), better runs that move avg5 across an
 // edge, hides that leave a player unrated, hides that leave runs, and a season change. Every 25 operations each
 // count row is compared with a fresh GROUP BY recount from ratings (one query per level), and percentile reads are

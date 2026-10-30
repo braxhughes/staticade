@@ -1,4 +1,4 @@
-// Card 3c (w28-daily) through the real entry point: starfall.html in headless Chrome (Playwright, system Chrome)
+// The Daily through the real entry point: starfall.html in headless Chrome (Playwright, system Chrome)
 // against the real Worker (server/dev-server.mjs) started with a DAILY_SECRET made at random for this run.
 // 1. DAILY FLIGHT asks the board: the run uses the server's seed (not the public one) and ticket, is played at real
 //    speed (the server refuses a run longer than the time since its ticket), is accepted and lands on the day board.

@@ -1,4 +1,4 @@
-// V4 fix (MED-2): cut, hunt and snap must be audible, quieter than every kill sound, short, valid, and not copies of themselves.
+// V4 fix: cut, hunt and snap must be audible, quieter than every kill sound, short, valid, and not copies of themselves.
 // Part A reads the synth voice lists in Node. Part B renders each sound offline in headless Chrome (same graph as tools/audio-check.mjs)
 // and measures peak, rms and length. Kills: near-silent snap (vol 0.004), loud or long hunt, invalid waveform, hunt pulse 2 = pulse 1.
 import test, { before, after } from 'node:test';

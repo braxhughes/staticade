@@ -1,6 +1,6 @@
 # Copy to server/wrangler.toml at go-live (see server/README.md). No secrets live here.
 # Secrets are set with `npx wrangler secret put <NAME>`, never in this file:
-#   DAILY_SECRET  required in production (card 3c): the Daily's seed and run tickets. At least 32 characters.
+#   DAILY_SECRET  required in production: the Daily's seed and run tickets. At least 32 characters.
 #   ADMIN_TOKEN   optional: turns on /admin/release and /admin/hide. At least 24 characters.
 name = "arcade-lb"
 main = "worker.js"

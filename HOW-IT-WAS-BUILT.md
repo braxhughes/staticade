@@ -22,7 +22,7 @@ I set the goals, the rules and the taste, and I playtested. Claude agents wrote 
 |---|---|---|
 | 1. Goal | Me | Goals in priority order, plus the rules every agent must follow (originality, purity of the game simulation, how to test). |
 | 2. Plan | Coordinator agent | Turns goals into cards. Each card has a written brief: scope, files it owns, what is forbidden, acceptance checks, and "what the reviewer will try". |
-| 3. Build | Builder agent | Works in its own git worktree and branch, so parallel cards never touch the same files. Writes code, new tests and a log entry. Never grades its own work. |
+| 3. Build | Builder agent | Works in its own git worktree and branch, so parallel cards never touch the same files. Writes code, new tests and short notes on what it did. Never grades its own work. |
 | 4. Re-run | Coordinator agent | Re-runs the full test suite itself instead of trusting the builder's report. |
 | 5. Cold review | A fresh agent, often a different model size than the builder | Gets a neutral brief and is told to be adversarial. Writes probes, mutates code in scratch copies to see if the tests catch it, and returns PASS, PARTIAL or FAIL. |
 | 6. Fix or stop | Builder, or me | Fixes go back through review. After two failed reviews on the same card, the line stops and I decide. |

@@ -18,9 +18,9 @@ export const ENTRY_TICKS = 1800; // 30 s, then the shown name is submitted
 export const todayUTC = (ms = Date.now()) => new Date(ms).toISOString().slice(0, 10);
 const realDayKey = k => typeof k === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(k) && Number.isFinite(Date.parse(k + 'T00:00:00Z')) && todayUTC(Date.parse(k + 'T00:00:00Z')) === k;
 
-// ---------- small text helpers for the daily row, the rating line and the share text (card 3b) ----------
+// ---------- small text helpers for the daily row, the rating line and the share text ----------
 const HOUR_MS = 3600000;
-// LOW12: time to the next UTC day: whole hours ('NEW DAILY IN 5H'), minutes in the last hour ('NEW DAILY IN 42M')
+// time to the next UTC day: whole hours ('NEW DAILY IN 5H'), minutes in the last hour ('NEW DAILY IN 42M')
 export function dailyResetText(ms) {
   const left = 86400000 - (((ms % 86400000) + 86400000) % 86400000);
   return left >= HOUR_MS ? 'NEW DAILY IN ' + Math.floor(left / HOUR_MS) + 'H' : 'NEW DAILY IN ' + Math.max(1, Math.ceil(left / 60000)) + 'M';
@@ -97,7 +97,7 @@ export function resimReplay(str, strictEnd = false) {
 const DAY_MS = 86400000;
 const MODE_HEADER = { [MODE_DAILY]: 'daily', [MODE_FREE]: 'arcade' };
 // now: null skips only the day window (for tests that run on a fixed clock); every other check stays on.
-// dailySeedOf (card 3c): the seed a daily of that dayKey must have. The server passes the seed it issued from
+// dailySeedOf: the seed a daily of that dayKey must have. The server passes the seed it issued from
 // DAILY_SECRET. Default (null): the public dailySeed, or the seed the board handed out for that day in this page
 // (createModes begin with a /daily answer records it in boardSeeds), so the game's local board keeps an online daily.
 // A Worker never calls begin, so its boardSeeds stays empty and the default there is the public seed only.
@@ -131,7 +131,7 @@ export function createModes({ lb, kv = memoryKv(), now = Date.now, game = GAME_I
     todayKey: () => todayUTC(now()),
     attemptUsed: day => kv.get(attemptKey(day)) != null,
     // a run record: ranked is decided by claim() on the first gameplay frame
-    // server (card 3c, remote board on): the answer of GET /daily. The run then uses the board's day, seed and ticket,
+    // server (remote board on): the answer of GET /daily. The run then uses the board's day, seed and ticket,
     // never the public seed; an answer that is not a real day and a uint32 seed throws (the caller shows the daily as
     // offline instead).
     begin(mode, freeSeed, server) {
@@ -210,7 +210,7 @@ export function createEntry(initial = 'AAA') {
 // ---------- high-score table ----------
 const TABS = [['all', 'ALL-TIME'], ['daily', 'TODAY'], ['season', 'SEASON']];
 export function createTable({ lb, game = GAME_ID }) {
-  // offline: the last read failed (LOW11: OFFLINE, not LOADING). line: status or rating line; warn: storage warning;
+  // offline: the last read failed (OFFLINE, not LOADING). line: status or rating line; warn: storage warning;
   // share: two lines of share text shown when the clipboard is refused; hint: the key line (null = the default)
   const t = { tab: 0, rows: [[], [], []], loaded: false, offline: false, hiId: null, note: '', summary: '', line: '', lineCol: COL.teal,
     warn: '', share: null, hint: null, tap: null,
@@ -246,7 +246,7 @@ export function createTable({ lb, game = GAME_ID }) {
   return t;
 }
 
-// LOW8: the touch target for share on the table: label and hit box in field units (400 x 300)
+// the touch target for share on the table: label and hit box in field units (400 x 300)
 export const SHARE_TAP = 'TAP HERE: SHARE';
 export const SHARE_BOX = Object.freeze({ x0: 110, x1: 290, y0: 279, y1: 300 });
 export const shareHit = (x, y) => x >= SHARE_BOX.x0 && x <= SHARE_BOX.x1 && y >= SHARE_BOX.y0 && y <= SHARE_BOX.y1;
@@ -275,7 +275,7 @@ export function drawTable(R, t, F) {
   }
   if (t.line && ui) text(t.line, CX, 262, t.lineCol, 1, 'c');
   if (ui) text(t.hint || 'UP DOWN: BOARD   FIRE: BACK', CX, 272, COL.dim, 1, 'c');
-  if (ui && t.tap) text(t.tap, CX, 289, COL.gold, 1, 'c'); // LOW8: tap target (a constant string)
+  if (ui && t.tap) text(t.tap, CX, 289, COL.gold, 1, 'c'); // tap target (a constant string)
 }
 
 // ---------- name entry screen ----------

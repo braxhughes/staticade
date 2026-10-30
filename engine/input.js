@@ -88,7 +88,7 @@ export function createInput({ target = window, surface, toField, onGesture, bind
     for (const n of touchNames) surface.addEventListener(n, onTouch, { passive: false });
     surface.addEventListener('mousedown', onMouse);
   }
-  // w30: take every listener back off (leaving a game for the lobby); the object is dead after this
+  // take every listener back off (leaving a game for the lobby); the object is dead after this
   api.dispose = function dispose() {
     target.removeEventListener('keydown', onKeyDown);
     target.removeEventListener('keyup', onKeyUp);

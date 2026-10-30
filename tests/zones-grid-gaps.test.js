@@ -1,4 +1,4 @@
-// w13-tests (w8-tests review MED, log ~21:30): the strict no-grid test misses (a) tilted lattices (20-30 degrees: no two
+// the strict no-grid test misses (a) tilted lattices (20-30 degrees: no two
 // dots share an x or a y), (b) grids drawn only at warp 0.1-0.4 and (c) grids drawn only during PYRE phase 3, because it
 // samples warp 0 / 0.5 / 1 and never passes a boss. New file only; the strict test is untouched.
 // Rule 1 (axis grids): the strict test's buckets, over warp 0.1..0.9 and with PYRE phase 3 on the Z3 sky.

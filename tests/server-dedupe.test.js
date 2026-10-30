@@ -1,4 +1,4 @@
-// w18 review follow-up (w18-lb-server-fix): the near-copy check, plus the review's test gaps, through the real
+// the near-copy check, plus the review's test gaps, through the real
 // entry point worker.fetch(new Request(...), env) on the node:sqlite D1 shim.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +10,7 @@ import { ipKey, LIMITS } from '../server/worker.js';
 import { record, playScripted, makeEnv, post, get, createWorker } from '../server/fixtures.mjs';
 
 const DAY = 86400000;
-let VICTIM; // tools/record-replay.mjs arcade seed 2: 4239 frames, score 33995 (the run the reviewer copied)
+let VICTIM; // tools/record-replay.mjs arcade seed 2: 4239 frames, score 33995 (the run the copy tests start from)
 let n = 0;
 const pid = () => `dedupe-${String(++n).padStart(4, '0')}`;
 const ip = () => `198.18.${n >> 8}.${n & 255}`;
@@ -27,7 +27,7 @@ const flip = (replay, frame, bit) => { const h = decode(replay); const w = Uint1
 before(() => { VICTIM = record('arcade', 2); });
 
 // The 19 frames of the victim run where flipping fire-press (0x400) keeps a finished run with the same score but
-// changes the final state hash: the reviewer's MED1 attack (found by trying every frame, 2026-10-29, GAME_VERSION 2.5).
+// changes the final state hash: a one-bit copy attack (found by trying every frame, 2026-10-29, GAME_VERSION 2.5).
 const REVIEW_FRAMES = [412, 587, 588, 589, 909, 954, 999, 1044, 1089, 1134, 1179, 1195, 1196, 1224, 1269, 1598, 2653, 3085, 3086];
 
 test('MED1: the reviewer\'s one-bit copies of a fetched replay are held for review, not stored; the board keeps one row', async () => {
@@ -192,7 +192,7 @@ test('fuzz: 150 garbage and mutated submits never give a 500', async () => {
   assert.ok(statuses.size >= 3, JSON.stringify([...statuses]));
 });
 
-// w18-lb-server-fix2: the threshold pinned on both sides, near copies held (not thrown away), and the owner's release.
+// the threshold pinned on both sides, near copies held (not thrown away), and the owner's release.
 // Runs built from the victim: its first F input frames as given, then a scripted player with its own input seed.
 // F picks how much of the opening the two runs share, so how alike they are (similarity measured and asserted).
 const splice = (F, inSeed) => playScripted(2, inSeed, 'script', 'arcade', decode(VICTIM.replay).words.slice(0, F));

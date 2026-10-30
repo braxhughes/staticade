@@ -10,7 +10,7 @@ import worker from './worker.js';
 const port = Number(process.argv[2] || 8850);
 const db = sqliteD1(process.argv[3] || ':memory:');
 await db.exec(fs.readFileSync(fileURLToPath(new URL('./schema.sql', import.meta.url)), 'utf8'));
-// ADMIN_TOKEN: optional, turns on POST /admin/release. DAILY_SECRET: optional (card 3c), the Daily's seed and tickets come
+// ADMIN_TOKEN: optional, turns on POST /admin/release. DAILY_SECRET: optional, the Daily's seed and tickets come
 // from it (at least 32 characters; never commit one: tests make a random one at runtime). Both only from the environment.
 const env = { DB: db, ADMIN_TOKEN: process.env.ADMIN_TOKEN, DAILY_SECRET: process.env.DAILY_SECRET || undefined };
 

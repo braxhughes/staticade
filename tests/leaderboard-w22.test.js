@@ -1,5 +1,5 @@
-// w22: the best-5 trophy rule in leaderboard/ranking.js (pure) and in the browser's local leaderboard
-// (leaderboard/api.js on the memory adapter, its JSON layout unchanged), plus LOW13 (season epoch = launch day).
+// the best-5 trophy rule in leaderboard/ranking.js (pure) and in the browser's local leaderboard
+// (leaderboard/api.js on the memory adapter, its JSON layout unchanged), plus the season epoch (launch day).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createLeaderboard, MAX_REPLAY_CHARS } from '../leaderboard/api.js';

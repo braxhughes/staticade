@@ -1,4 +1,4 @@
-// w17 tests-only slice, group 1: S10 review MEDs. (1) exactly one off-beat kill in a phrase: Complete and In Order pay,
+// Test gaps, group 1: STARLIGHT gaps. (1) exactly one off-beat kill in a phrase: Complete and In Order pay,
 // In Tune does not, and the on-beat kills after it still play melody notes 0, 1, 2 ... (the note counts on-beat kills only).
 // (2) STARLIGHT state (S.sl: kills, tune, order, gone, grade, ord, paid) is reset by setup for every new STARLIGHT stage.
 // Expected values are literals from design.md B.4 (Z1 phrase of 6: Complete 90 x 6, In Tune 210 x 6, In Order x1.5).

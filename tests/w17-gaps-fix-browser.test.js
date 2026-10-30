@@ -1,4 +1,4 @@
-// w17 tests-only follow-up, LOW1: positive control for the G test in w17-main-gaps.test.js. In the same setup, the boss-kill
+// positive control for the G test in w17-main-gaps.test.js. In the same setup, the boss-kill
 // sound IS accepted (fxTest returns true) and the flag it sets is effective: the same escaped boss that gets no bossDefeat
 // after an earlier stage's mark DOES get exactly one when a bossDie is heard in its own stage.
 import test from 'node:test';
