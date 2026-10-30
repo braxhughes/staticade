@@ -6,6 +6,10 @@ PURE SKILL. DRAWN IN LIGHT.
 
 Play: https://staticade.com
 
+![Walking up to the STARFALL cabinet in the lobby, inserting a coin, and pushing into the CRT title screen](docs/media/starfall-machine-select.gif)
+
+![STARFALL gameplay: stage 1, enemy waves diving, chain counter climbing](docs/media/starfall-gameplay.gif)
+
 ## What is in it
 
 | Piece | One line |
