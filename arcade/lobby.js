@@ -18,7 +18,7 @@ import { buildCabinetGeometry, DEFAULT_PALETTE, G_LAMP, G_INSERT, G_CREDIT1, G_M
 import { MACHINES, START_INDEX } from './machines.js';
 import { ARCADE_NAME, ARCADE_TAGLINE } from './brand.js';
 import { createNav, dollyPose, coinDoorPose, DOLLY_TICKS, STEP_TICKS, LOBBY_FOC,
-  floorPose, floorX, FLOOR_SPACING, CAB_ANGLE, WALL_Z, FLOOR_EYE_Z, SWING_TICKS, SWING_SHUT, swingAngle, slideK, rowShift, rowDX, rowPose } from './lobby-cam.js';
+  floorPose, floorX, FLOOR_SPACING, CAB_ANGLE, WALL_Z, FLOOR_EYE_Z, SWING_TICKS, SWING_SHUT, swingAngle, slideK, slideL, slideR, rowShift, rowDX, rowPose } from './lobby-cam.js';
 import { browserBoard } from './lobby-board.js';
 const PLAY_HINT = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) ? 'TAP: PLAY' : 'ENTER: PLAY';
 
@@ -89,7 +89,8 @@ const S_MAX = 32000, sX = new Float32Array(S_MAX), sY = new Float32Array(S_MAX),
   sGrp = new Uint8Array(S_MAX), sMi = new Uint8Array(S_MAX), sBnd = new Uint8Array(S_MAX);
 let sN = 0;
 // S_TUBE: the long neon tube (hums, flickers now and then); S_WGLOW: light from a cabinet pooling on the wall behind it
-const S_FLOOR = 0, S_POOL = 1, S_WALL = 2, S_NEON = 3, S_TUBE = 4, S_WGLOW = 5;
+const S_FLOOR = 0, S_POOL = 1, S_WALL = 2, S_NEON = 3, S_TUBE = 4, S_WGLOW = 5, S_CEIL = 6;
+let SPILL_M = 0;   // scene build scratch: the machine whose light is brightest at a wall point
 function spt(x, y, z, s, c, a, g, mi, bnd) {
   if (sN >= S_MAX) return;
   const i = sN++;
@@ -131,8 +132,41 @@ const TRIM = [.5, .45, 1], TUBE = [.95, .35, 1];
     sline(mx - 48, 232, WZ, mx + 48, 232, WZ, 2.6, 0.8, g, 0.35, S_NEON, m, 1);
   }
   // the wall: a faint dot texture, a wainscot (baseboard, panel seams, chair rail) and the trim where wall meets floor
-  for (let x = LX; x <= RX; x += 14) for (let y = 104; y <= 330; y += 14) spt(x, y, WZ, 0.55, [.35, .4, .8], 0.06 + 0.04 * ((x / 14 + y / 14) & 1), S_WALL);
-  for (let x = LX; x <= RX; x += 10) for (let y = 16; y <= 90; y += 10) spt(x, y, WZ, 0.5, [.4, .38, .8], 0.08, S_WALL);
+  // the upper wall is brick in dots: mortar courses and staggered joints, lit up near each cabinet (the light
+  // spills up the wall from its marquee, tinted by it) and fading toward the ceiling. Only the stretch any lobby eye
+  // can see (BX0..BX1), to keep within the scene buffer.
+  const BX0 = -620, BX1 = (N - 1) * FLOOR_SPACING + 320, BRICK_W = 30, BRICK_H = 12, MORTAR = [.42, .38, .9];
+  const spill = (x, y) => { let b = 0, bi = 0; for (let m = 0; m < N; m++) { const d = (x - floorX(m)) / 125, v = Math.exp(-d * d); if (v > b) { b = v; bi = m; } } SPILL_M = bi; return b * clamp(1 - (y - 150) / 160, 0.25, 1); };
+  const mix = (c, g, t, out) => { out[0] = c[0] + (g[0] - c[0]) * t; out[1] = c[1] + (g[1] - c[1]) * t; out[2] = c[2] + (g[2] - c[2]) * t; return out; };
+  const mc = [0, 0, 0];
+  for (let y = 104, row = 0; y <= 260; y += BRICK_H, row++) {
+    const hf = 1 - (y - 104) / 220;
+    for (let x = BX0; x <= BX1; x += 6) { const sp = spill(x, y); spt(x, y, WZ, 0.55, mix(MORTAR, MACHINES[SPILL_M].glow, sp * 0.6, mc), (0.15 + 0.22 * sp) * hf + 0.04, S_WALL); }
+    if (y + BRICK_H > 262) break;
+    for (let x = BX0 + (row & 1) * BRICK_W / 2; x <= BX1; x += BRICK_W) {
+      const sp = spill(x, y + 6);
+      for (let k = 1; k <= 1; k++) spt(x, y + 6, WZ, 0.6, mix(MORTAR, MACHINES[SPILL_M].glow, sp * 0.6, mc), (0.15 + 0.2 * sp) * hf + 0.04, S_WALL);
+      // the brick's face: one soft wide dot, warmer where the light falls
+      spt(x + BRICK_W / 2, y + 6, WZ, 6.5, mix([.3, .25, .6], MACHINES[SPILL_M].glow, sp, mc), (0.025 + 0.08 * sp) * hf, S_WALL);
+    }
+  }
+  // the ceiling. A cornice where it meets the wall (crown line and a dimmer step under it), beams running from the
+  // wall toward the viewer (they fan up out of the frame in perspective), and a row of wall-washer lamps on the ceiling
+  // edge, each throwing a soft cone of light down the brick. Group S_CEIL: masked around the tagline (see render).
+  const CEIL = 300;
+  sline(BX0, CEIL, WZ, BX1, CEIL, WZ, 3.2, 0.8, TRIM, 0.42, S_CEIL);
+  sline(BX0, CEIL - 5, WZ, BX1, CEIL - 5, WZ, 4, 0.5, TRIM, 0.18, S_CEIL);
+  for (let x = BX0 + 20; x <= BX1; x += 110) sline(x, CEIL, WZ, x, CEIL, WZ + 130, 4.5, 0.65, [.4, .36, .85], 0.22, S_CEIL);
+  sline(BX0, CEIL, WZ + 45, BX1, CEIL, WZ + 45, 7, 0.5, [.4, .36, .85], 0.1, S_CEIL);
+  const LAMP = [1, .85, .6];
+  for (let x = BX0 + 75; x <= BX1; x += 110) {
+    spt(x, CEIL - 2, WZ + 8, 1.6, [1, .95, .85], 0.9, S_CEIL); spt(x, CEIL - 2, WZ + 8, 7, LAMP, 0.1, S_CEIL);
+    for (let k = 0; k < 34; k++) {
+      const t = (k + 0.5) / 34, yy = CEIL - 8 - t * 70, w = 6 + t * 34, xx = x + (((k * 37) % 17) / 8 - 1) * w;
+      spt(xx, yy, WZ, 4 + t * 5, LAMP, 0.07 * (1 - t), S_CEIL);
+    }
+  }
+  for (let x = LX; x <= RX; x += 14) for (let y = 16; y <= 90; y += 12) spt(x, y, WZ, 0.55, [.4, .38, .8], 0.09, S_WALL);
   sline(LX, 1, WZ + 0.5, RX, 1, WZ + 0.5, 1.8, 0.9, TRIM, 0.55, S_WALL);
   sline(LX, 11, WZ, RX, 11, WZ, 2.4, 0.6, TRIM, 0.4, S_WALL);
   sline(LX, 96, WZ, RX, 96, WZ, 2, 0.85, TRIM, 0.6, S_WALL);
@@ -166,7 +200,10 @@ const camRow = new Float32Array(7);
 // ---------- camera ----------
 const nav = createNav(N, START_INDEX);
 const cam = new Float32Array(7), camFrom = new Float32Array(7);
-let Fx = 0, Fy = 0, Fz = -1, Rx = 1, Rz = 0, Ux = 0, Uy = 1, Uz = 0, PX = 0, PY = 0, PZ = 0, focal = 190;
+let Fx = 0, Fy = 0, Fz = -1, Rx = 1, Rz = 0, Ux = 0, Uy = 1, Uz = 0, focal = 190;
+// the last projection lives in a typed array, not in module-level lets (a double stored to a module let can be
+// boxed as a fresh heap number on each write; proj runs for every dot, so that was per-frame garbage)
+const PP = new Float64Array(3);
 function basis() {
   const fx = cam[3] - cam[0], fy = cam[4] - cam[1], fz = cam[5] - cam[2];
   const fl = Math.hypot(fx, fy, fz); Fx = fx / fl; Fy = fy / fl; Fz = fz / fl;
@@ -176,10 +213,10 @@ function basis() {
 }
 function proj(x, y, z) {
   const dx = x - cam[0], dy = y - cam[1], dz = z - cam[2];
-  PZ = dx * Fx + dy * Fy + dz * Fz;
-  if (PZ < 1) return false;
-  PX = CX + focal * (dx * Rx + dz * Rz) / PZ; PY = H / 2 - focal * (dx * Ux + dy * Uy + dz * Uz) / PZ;
-  return PX > -20 && PX < W + 20 && PY > -20 && PY < H + 20;
+  PP[2] = dx * Fx + dy * Fy + dz * Fz;
+  if (PP[2] < 1) return false;
+  PP[0] = CX + focal * (dx * Rx + dz * Rz) / PP[2]; PP[1] = H / 2 - focal * (dx * Ux + dy * Uy + dz * Uz) / PP[2];
+  return PP[0] > -20 && PP[0] < W + 20 && PP[1] > -20 && PP[1] < H + 20;
 }
 // the cabinet being drawn: at angle 0 it stands flush (exactly the old row's placement); otherwise it is swung open
 // about the hinge at its back-left corner (local x -38, z -70), its front turned toward the left of the screen
@@ -305,9 +342,11 @@ function cabAngle(i, al) {
   return q >= 1 ? 0 : swingAngle(q);
 }
 // where every cabinet stands this frame: the lobby row (rowShift), sliding into the v1 row during the Enter move
+// (the previous cabinets on slideL, the selected one with the eye on slideK, the next ones on slideR)
 function layout(al, pos) {
-  const sel = nav.index, k = mode === 'lobby' ? 0 : mode === 'swing' ? slideK(swingQ(al)) : 1;
+  const sel = nav.index, sw = mode === 'swing', sq = sw ? swingQ(al) : 0;
   for (let i = 0; i < N; i++) {
+    const k = mode === 'lobby' ? 0 : !sw ? 1 : i < sel ? slideL(sq) : i > sel ? slideR(sq) : slideK(sq);
     const r = mode === 'lobby' ? rowShift(i - pos) : rowShift(i - sel);
     DX[i] = r + (rowDX(i, sel) - r) * k;
     OPEN[i] = cabAngle(i, al) / CAB_ANGLE;
@@ -427,7 +466,7 @@ function sdot(lx, ly, s, r, g, b, a) {
     if ((ly * 0.625 | 0) & 1) a *= 0.72;
   }
   if (!projCab(lx - 32, 153 - ly, -6)) return;
-  dot(PX, PY, clamp(s * focal / PZ, 0.3, 6), r, g, b, a * scrFade * scrBoost);
+  dot(PP[0], PP[1], clamp(s * focal / PP[2], 0.3, 6), r, g, b, a * scrFade * scrBoost);
 }
 function stext(str, cx, y, sc, c0, c1, a, wave, t) {
   const w = str.length * 6 * sc - sc;
@@ -575,21 +614,26 @@ function drawMachine(i, itm, bright, sideL, sideR, openK, refl) {
     else if (g === G_MARQ) a *= 0.85 + 0.6 * Math.max(0, 1 - Math.abs(sweep - X[k]) / 9) + fl * 1.4;
     else if (g === G_BTN) a *= (playable ? 0.75 : 0.4) + 0.25 * Math.sin(itm * 4 + X[k] * 0.3);
     if (a < 0.004 || !projCab(X[k], Y[k], Z[k])) continue;
-    dot(PX, PY, clamp(S[k] * focal / PZ, 0.35, 7), R[k], G[k], B[k], a);
+    dot(PP[0], PP[1], clamp(S[k] * focal / PP[2], 0.35, 7), R[k], G[k], B[k], a);
     // a soft reflection of the cabinet's lower body in the polished floor
-    if (refl > 0 && (k & 1) === 0 && Y[k] < 110 && projCab(X[k], -Y[k], Z[k])) dot(PX, PY, clamp(S[k] * focal / PZ, 0.35, 7), R[k], G[k], B[k], a * refl * 0.16 * (1 - Y[k] / 110));
+    if (refl > 0 && (k & 1) === 0 && Y[k] < 110 && projCab(X[k], -Y[k], Z[k])) dot(PP[0], PP[1], clamp(S[k] * focal / PP[2], 0.35, 7), R[k], G[k], B[k], a * refl * 0.16 * (1 - Y[k] / 110));
   }
   const ea = 0.7 * bright * openK, E = MP[i].edge, Pm = MP[i];
   if (ea > 0.004) for (let k = 0; k < saN; k++) {
     if (!projCab(38, saY[k], saZ[k])) continue;
     const c = saK[k] === 0 ? E : saK[k] === 1 ? Pm.teal : saK[k] === 2 ? Pm.amber : Pm.gold;
-    dot(PX, PY, clamp(1.25 * focal / PZ, 0.35, 5), c[0], c[1], c[2], saA[k] * ea * (0.85 + 0.15 * Math.sin(itm * 2 + saY[k] * 0.05)));
+    dot(PP[0], PP[1], clamp(1.25 * focal / PP[2], 0.35, 5), c[0], c[1], c[2], saA[k] * ea * (0.85 + 0.15 * Math.sin(itm * 2 + saY[k] * 0.05)));
   }
-  if (ea > 0.004) for (let k = 0; k < xeN; k++) if (projCab(xeX[k], xeY[k], xeZ[k])) dot(PX, PY, clamp(0.55 * focal / PZ, 0.35, 7), E[0], E[1], E[2], ea);
+  if (ea > 0.004) for (let k = 0; k < xeN; k++) if (projCab(xeX[k], xeY[k], xeZ[k])) dot(PP[0], PP[1], clamp(0.55 * focal / PP[2], 0.35, 7), E[0], E[1], E[2], ea);
 }
 
+// the band from the wordmark's bottom row through the tagline (field coords, with a margin): ceiling, cornice and
+// lamp dots stay out of it, so no line runs under the name or through the tagline (they show at the sides and above)
+let tgX0 = 0, tgX1 = 0, tgY0 = 0, tgY1 = 0;
 function render(al) {
+  if (tgX1 === 0) { const hw = Math.max(textW(ARCADE_TAGLINE, 1), WM_MAXW) / 2 + 8; tgX0 = CX - hw; tgX1 = CX + hw; tgY0 = wmBottom - 5; tgY1 = wmBottom + 17; }
   fpsT[fpsN++ & 255] = performance.now();
+  posterDrawn.fill(0);
   if (gfx.lost) return;
   const time = (ui.F + al) / 60;
   const inLobby = mode === 'lobby' || mode === 'swing';
@@ -618,7 +662,7 @@ function render(al) {
     let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
     for (let k = 0; k < 8; k++) {
       projCab(k & 1 ? 38 : -38, k & 2 ? 190 : 0, k & 4 ? -70 : 0);
-      if (PX < x0) x0 = PX; if (PX > x1) x1 = PX; if (PY < y0) y0 = PY; if (PY > y1) y1 = PY;
+      if (PP[0] < x0) x0 = PP[0]; if (PP[0] > x1) x1 = PP[0]; if (PP[1] < y0) y0 = PP[1]; if (PP[1] > y1) y1 = PP[1];
     }
     rx0[i] = x0; rx1[i] = x1; ry0[i] = y0; ry1[i] = y1;
     const f = 1 - Math.min(1, Math.abs(pos - i));
@@ -628,7 +672,7 @@ function render(al) {
   bdX0 = bdX1 = bdY0 = bdY1 = -1;
   { const bi = Math.round(pos);
     if (mode === 'lobby' && focus[bi] > 0.8 && proj(floorX(bi) + DX[bi] + BOARD_WX, BOARD_WY, WALL_Z)) {
-      const k = 0.94 * clamp(focal / PZ / KREF, 0.5, 2); bdX0 = PX; bdY0 = PY; bdX1 = PX + BOARD_W * k; bdY1 = PY + BOARD_H * k;
+      const k = 0.94 * clamp(focal / PP[2] / KREF, 0.5, 2); bdX0 = PP[0]; bdY0 = PP[1]; bdX1 = PP[0] + BOARD_W * k; bdY1 = PP[1] + BOARD_H * k;
     } }
   if (inLobby || fade > 0.003) {
     // the neon tube hums, and now and then stutters (a short hash of the frame time, no randomness)
@@ -643,8 +687,9 @@ function render(al) {
       else if (g === S_NEON) a *= mi === 255 ? topK : 0.35 + 0.65 * focus[mi];   // a neighbour's strip is dimmer; 255: the cornice
       else if (g === S_TUBE) a *= tube * topK;
       if (a < 0.004 || !proj(sX[k] + (sBnd[k] ? DX[mi] + POOL_DX * OPEN[mi] : 0), sY[k], g === S_POOL ? sZ[k] + (POOL_Z - WALL_Z - 35) * OPEN[mi] : sZ[k])) continue;
-      if (g >= S_WALL && (occluded(PX, PY) || (PX > bdX0 && PX < bdX1 && PY > bdY0 && PY < bdY1))) continue;
-      dot(PX, PY, clamp(sS[k] * focal / PZ, 0.3, 9), sR[k], sG[k], sB[k], a);
+      if (g >= S_WALL && (occluded(PP[0], PP[1]) || (PP[0] > bdX0 && PP[0] < bdX1 && PP[1] > bdY0 && PP[1] < bdY1))) continue;
+      if (g === S_CEIL && PP[0] > tgX0 && PP[0] < tgX1 && PP[1] > tgY0 && PP[1] < tgY1) continue;   // keep clear of the tagline
+      dot(PP[0], PP[1], clamp(sS[k] * focal / PP[2], 0.3, 9), sR[k], sG[k], sB[k], a);
     }
     // dust motes: they rise slowly through the light and twinkle; the field wraps around the eye as it walks
     const mx0 = cam[0] - 300;
@@ -653,11 +698,12 @@ function render(al) {
       const y = 8 + ((moY[k] + time * 4.5) % 240), tw = 0.5 + 0.5 * Math.sin(time * 1.7 + moP[k] * 3);
       if (!proj(x, y, moZ[k] + Math.sin(time * 0.3 + moP[k]) * 10)) continue;
       const c = STAR_COLS[moC[k]];
-      dot(PX, PY, clamp(0.7 * focal / PZ, 0.35, 2.2), 0.6 + 0.4 * c[0], 0.6 + 0.4 * c[1], 0.6 + 0.4 * c[2], (0.08 + 0.28 * tw * tw) * sceneFade);
+      dot(PP[0], PP[1], clamp(0.7 * focal / PP[2], 0.35, 2.2), 0.6 + 0.4 * c[0], 0.6 + 0.4 * c[1], 0.6 + 0.4 * c[2], (0.08 + 0.28 * tw * tw) * sceneFade);
     }
     // the wall boards hang behind the cabinets, so they go first
-    // (the selected one dims away while its cabinet swings shut across it)
-    const bf = mode === 'swing' ? 1 - smooth(clamp(swingQ(al) * 2.4, 0, 1)) : inLobby ? 1 : 0;
+    // (the selected one dims away while its cabinet swings shut across it; gone by q 0.17, as the previous
+    // cabinet, now sliding in from the start, crosses it)
+    const bf = mode === 'swing' ? 1 - smooth(clamp(swingQ(al) * 6, 0, 1)) : inLobby ? 1 : 0;
     for (let i = 0; i < N; i++) if (Math.abs(i - pos) < 1) drawBoard(i, sceneFade * (i === nav.index ? bf : 1));
   }
   for (let i = 0; i < N; i++) {
@@ -789,6 +835,95 @@ function bulbs(x, y, w, h, k, c, a, F) {
     else dot(px, py, 1.3 * k, c[0], c[1], c[2], 0.4 * a);
   }
 }
+// ---------- the COMING SOON poster pasted across a non-playable machine's board ----------
+// A sheet of aged paper in dots, slapped on at a tilt: a torn left edge and a torn-off top-left corner, the bottom-right
+// corner curled up (its flap shows the paper's darker back), two strips of tape at the top corners, and COMING SOON in
+// bold red ink in the board's own 5x7 type (each cell four sub-dots). Built once in poster-local units (board units,
+// origin at the sheet's centre, v down); drawBoard only transforms it, so the frame allocates nothing. The dots blend
+// additively, so the ink is a knockout: no paper dot sits under a letter, and the board's rows hide under the sheet.
+const PO_HW = 61, PO_HH = 30, PO_CU = 68, PO_CV = 89, PO_ANG = -0.17, PO_C = Math.cos(PO_ANG), PO_S = Math.sin(PO_ANG);
+const PO_MAX = 4200, poU = new Float32Array(PO_MAX), poV = new Float32Array(PO_MAX), poSz = new Float32Array(PO_MAX),
+  poR = new Float32Array(PO_MAX), poG = new Float32Array(PO_MAX), poB = new Float32Array(PO_MAX), poA = new Float32Array(PO_MAX);
+let poN = 0;
+{
+  const hsh = i => (Math.imul(i ^ 0x5bd1e995, 0x2c1b3c6d) >>> 0) / 4294967296;
+  const add = (u, v, s, c, a) => { if (poN >= PO_MAX) return; poU[poN] = u; poV[poN] = v; poSz[poN] = s; poR[poN] = c[0]; poG[poN] = c[1]; poB[poN] = c[2]; poA[poN++] = a; };
+  // the ink: two lines, centred, cells of PO_SC
+  const PO_SC = 2.5, LINES = ['COMING', 'SOON'], TOPS = [-PO_HH + 6.5, 0.5];
+  const inkAt = (u, v) => {
+    for (let l = 0; l < 2; l++) {
+      const str = LINES[l], x0 = -textW(str, PO_SC) / 2, r = Math.round((v - TOPS[l]) / PO_SC);
+      if (r < 0 || r > 6) continue;
+      const ci = Math.floor((u - x0 + PO_SC * 0.5) / (6 * PO_SC)); if (ci < 0 || ci >= str.length) continue;
+      const b = Math.round((u - x0 - ci * 6 * PO_SC) / PO_SC); if (b < 0 || b > 4) continue;
+      if ((FONT[str[ci]][r] >> (4 - b)) & 1) return true;
+    }
+    return false;
+  };
+  const CURL = 13;   // the curled corner's fold, measured along both edges from the bottom-right corner
+  const inFlap = (u, v) => (PO_HW - u) + (PO_HH - v) < CURL;
+  const PAPER = [1, .93, .76], AGED = [.95, .74, .42], BACK = [.78, .68, .5], INK = [1, .2, .16];
+  let i = 0;
+  for (let v = -PO_HH; v <= PO_HH; v += 2.1) for (let u = -PO_HW; u <= PO_HW; u += 2.1, i++) {
+    const h = hsh(i), h2 = hsh(i + 7919);
+    if (u < -PO_HW + 2.4 * hsh(((v * 3) | 0) + 99)) continue;                  // torn left edge
+    if (v > PO_HH - 1.6 * hsh(((u * 2) | 0) + 17)) continue;                   // ragged bottom edge
+    if ((u + PO_HW) + (v + PO_HH) < 8 + 3 * h) continue;                     // torn-off top-left corner
+    if (inFlap(u, v)) continue;
+    if (inkAt(u, v)) continue;
+    const e = Math.min(PO_HW - Math.abs(u), PO_HH - Math.abs(v)), age = clamp(1 - e / 9, 0, 1) * 0.8 + h2 * 0.25;
+    const c = age > 0.5 ? AGED : PAPER;
+    add(u, v, 2.1 + h * 0.5, c, (0.36 + 0.08 * h) * (1 - 0.3 * age));
+  }
+  // the printed rule just inside the sheet, broken where the paper is torn
+  for (let u = -PO_HW + 6; u <= PO_HW - 6; u += 1.6) { add(u, -PO_HH + 3.5, 0.55, INK, 0.45); if (u < PO_HW - CURL - 2) add(u, PO_HH - 3.5, 0.55, INK, 0.45); }
+  for (let v = -PO_HH + 3.5; v <= PO_HH - 3.5; v += 1.6) { add(-PO_HW + 5, v, 0.55, INK, 0.45); if (v < PO_HH - CURL - 2) add(PO_HW - 3.5, v, 0.55, INK, 0.45); }
+  // the letters: each lit cell is four sub-dots, so the type reads bold; a soft bleed of ink behind
+  for (let l = 0; l < 2; l++) {
+    const str = LINES[l]; let x0 = -textW(str, PO_SC) / 2;
+    for (let ci = 0; ci < str.length; ci++, x0 += 6 * PO_SC) for (let r = 0; r < 7; r++) for (let b = 0; b < 5; b++) if ((FONT[str[ci]][r] >> (4 - b)) & 1) {
+      const cu = x0 + b * PO_SC, cv = TOPS[l] + r * PO_SC;
+      for (let q = 0; q < 4; q++) add(cu + (q & 1 ? 0.6 : -0.6), cv + (q & 2 ? 0.6 : -0.6), 1.15, INK, 0.95);
+      add(cu, cv, 3.2, INK, 0.07);
+    }
+  }
+  // the curled flap: the paper's back, folded over the corner, shaded darker toward the fold, with a crisp fold line
+  const fx0 = PO_HW - CURL, fy0 = PO_HH - CURL;
+  for (let v = fy0; v <= PO_HH; v += 1.8) for (let u = fx0; u <= PO_HW; u += 1.8) {
+    const d = (u - fx0) + (v - fy0); if (d > CURL) continue;
+    add(u, v, 1.6, BACK, 0.22 + 0.16 * (d / CURL));
+  }
+  for (let t = 0; t <= 1; t += 0.06) add(fx0 + CURL * t, PO_HH - CURL * t, 0.7, PAPER, 0.7);
+  // two strips of tape over the top corners: pale, see-through, a little crooked, with frayed ends
+  const tape = (cu, cv, ang) => {
+    const c = Math.cos(ang), s = Math.sin(ang);
+    for (let a = -11; a <= 11; a += 1.5) for (let b = -3.5; b <= 3.5; b += 1.5) {
+      if (Math.abs(a) > 10 && hsh(((a * 13 + b * 7) | 0) + 400) < 0.5) continue;
+      add(cu + a * c - b * s, cv + a * s + b * c, 1.5, [1, .97, .78], Math.abs(b) > 3 ? 0.2 : 0.12);
+    }
+  };
+  tape(-PO_HW + 4, -PO_HH + 2, -0.62); tape(PO_HW - 3, -PO_HH + 1, 0.55);
+}
+const POT = new Float64Array([0, 0, 1]);   // this frame's poster transform x, y, scale (set by drawBoard)
+// is field point (px, py) under the poster sheet, widened by pad board units? (the board's rows behind it are not drawn)
+function underPoster(px, py, pad = 1) {
+  const du = (px - POT[0]) / POT[2], dv = (py - POT[1]) / POT[2], u = du * PO_C + dv * PO_S, v = -du * PO_S + dv * PO_C;
+  return u > -PO_HW - pad && u < PO_HW + pad && v > -PO_HH - pad && v < PO_HH + pad;
+}
+// a rank number (right edge xr, top y, height h) is drawn whole or not at all: if any corner of it comes within
+// reach of the sheet or its tape (the tape strips stand out about 9 units past the sheet), it is left out
+const PO_TAPE = 10;
+const rankCovered = (xl, xr, y, h) => underPoster(xl, y, PO_TAPE) || underPoster(xr, y, PO_TAPE) || underPoster(xl, y + h, PO_TAPE) || underPoster(xr, y + h, PO_TAPE);
+// which machines' posters the last frame drew (read by LOBBY.posterShown)
+const posterDrawn = new Uint8Array(N);
+function drawPoster(i, a) {
+  posterDrawn[i] = 1;
+  const c = PO_C * POT[2], s = PO_S * POT[2];
+  for (let j = 0; j < poN; j++) {
+    const u = poU[j], v = poV[j];
+    dot(POT[0] + u * c - v * s, POT[1] + u * s + v * c, poSz[j] * POT[2], poR[j], poG[j], poB[j], poA[j] * a);
+  }
+}
 // the row reveal: restarts whenever you arrive at a machine or its board's answer comes in
 let revT = 0, revKey = -2;
 function revealTick() {
@@ -798,7 +933,7 @@ function revealTick() {
 const rowChars = r => clamp((revT - 6 - r * 5) * 0.9, 0, 40);
 function drawBoard(i, fa) {
   if (fa < 0.004 || !proj(floorX(i) + DX[i] + BOARD_WX, BOARD_WY, WALL_Z)) return;
-  const k = 0.94 * clamp(focal / PZ / KREF, 0.5, 2), x = PX, y = PY, w = BOARD_W * k, h = BOARD_H * k;
+  const k = 0.94 * clamp(focal / PP[2] / KREF, 0.5, 2), x = PP[0], y = PP[1], w = BOARD_W * k, h = BOARD_H * k;
   // only the selected machine's board shows: it fades out over the first half of a step and the next one in over the second
   const g = MACHINES[i].glow, a = fa * smooth(clamp(focus[i] * 2 - 1, 0, 1));
   if (a < 0.004) return;
@@ -826,12 +961,18 @@ function drawBoard(i, fa) {
   const sc = ROW_SC * k, top = y + 35 * k, rh = ROW_H * k, xr = x + 17 * k, xn = x + 22 * k, xs = x + w - 8 * k, foot = y + 139 * k;
   bline(x + 8 * k, foot - 4 * k, x + w - 8 * k, foot - 4 * k, 2.2 * k, 0.6 * k, g, 0.5 * a);
   if (!MACHINES[i].playable) {
+    // the COMING SOON poster across the middle of the board; the empty rows show only around it
+    POT[0] = x + PO_CU * k; POT[1] = y + PO_CV * k; POT[2] = k;
     for (let r = 0; r < 10; r++) {
-      const n = rowChars(r);
-      ftext(board.rows[r].rank, xr, top + r * rh, FAINT, sc, 'r', 0.6 * a, n, 0);
-      if (n > 0) bline(xn + 2 * k, top + r * rh + 3 * k, xn + 2 * k + (xs - xn - 2 * k) * Math.min(1, n / 8), top + r * rh + 3 * k, 4 * k, 0.5 * k, FAINT, 0.45 * a);
+      const n = rowChars(r), ry = top + r * rh;
+      if (!rankCovered(xr - textW(board.rows[r].rank, sc), xr, ry, 7 * sc)) ftext(board.rows[r].rank, xr, ry, FAINT, sc, 'r', 0.6 * a, n, 0);
+      if (n > 0) {
+        const x0 = xn + 2 * k, x1 = x0 + (xs - x0) * Math.min(1, n / 8), m = Math.max(1, Math.round((x1 - x0) / (4 * k)));
+        for (let q = 0; q <= m; q++) { const px = x0 + (x1 - x0) * q / m; if (!underPoster(px, ry + 3 * k)) dot(px, ry + 3 * k, 0.5 * k, FAINT[0], FAINT[1], FAINT[2], 0.45 * a); }
+      }
     }
     text('OPENS AT LAUNCH', cx, foot + 7 * k, g, sc, 'c', a * ((time * 1.9) % 1 < 0.62 ? 1 : 0.2));
+    drawPoster(i, a);
     return;
   }
   const B = board;
@@ -900,13 +1041,21 @@ window.LOBBY = {
     return {
       mode, index: nav.index, id: MACHINES[nav.index].id, ids: MACHINES.map(m => m.id), names: MACHINES.map(m => m.name),
       moving: nav.moving, pos: +nav.pos(0).toFixed(3), cam: Array.from(cam), crt: ui.crtOn, flash: flashT, dolly: +(dollyT / DOLLY_TICKS).toFixed(3),
-      muted: ui.muted, music: musicOn, fps: fps(), handoffReady, stepTicks: STEP_TICKS,
+      muted: ui.muted, music: musicOn, fps: fps(), handoffReady, stepTicks: STEP_TICKS, sceneDots: sN, sceneMax: S_MAX,
       // the selected cabinet's angle in degrees (72 swung open, 0 flush), the swing's progress 0..1
       angle: +(cabAngle(nav.index, 0) * 180 / Math.PI).toFixed(2), swing: mode === 'lobby' ? 0 : +clamp((swingHold >= 0 ? swingHold * SWING_TICKS : swingT) / SWING_TICKS, 0, 1).toFixed(3)
     };
   },
   // the wall board: state 'loading' | 'ok' | 'offline', rows, the player's line, and how many reads went out
   board() { return board.snapshot(); },
+  // each cabinet's screen box from the last frame (field coords, 400 wide, centre 200) and its angle in degrees
+  rowBoxes() {
+    const out = [];
+    for (let i = 0; i < N; i++) out.push({ id: MACHINES[i].id, x0: rx0[i], x1: rx1[i], y0: ry0[i], y1: ry1[i], angle: +(cabAngle(i, 0) * 180 / Math.PI).toFixed(2) });
+    return { cx: CX, sel: nav.index, mode, boxes: out };
+  },
+  // the ids of the machines whose COMING SOON poster the last frame drew (read only)
+  posterShown() { const out = []; for (let i = 0; i < N; i++) if (posterDrawn[i]) out.push(MACHINES[i].id); return out; },
   refreshBoard() { return board.refresh().then(() => board.snapshot()); },
   // freeze the Enter swing at q (0..1) on Starfall (starts it if needed); swingAt(null) lets it run
   swingAt(q) {

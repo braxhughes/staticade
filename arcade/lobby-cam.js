@@ -141,7 +141,18 @@ export function floorPose(nav, alpha, time, out) {
   return out;
 }
 // the Enter move, SWING_TICKS long: the cabinet swings shut over the first SWING_SHUT of it (swingAngle of its own
-// 0..1), and from SLIDE_FROM on the row slides together into the v1 row while the eye moves to rowPose (slideK)
-export const SWING_TICKS = 56, SWING_SHUT = 0.55, SLIDE_FROM = 0.35;
+// 0..1). From the first tick the row slides together into the v1 row while the eye moves to rowPose, done by SLIDE_END.
+// the slide used to start at 0.35 and run to the end.
+// an eased-in slide (easeIO) still barely moved over the first 30%, and the swinging cabinet's front, which
+// sticks out to the left, pulled back right as it shut, eating what little the slide closed: the gap to the previous
+// cabinet plateaued at about two cabinet widths. Now each part has its own ease-out (fastest at the start): the
+// previous cabinet (slideL) comes in first and fastest, the eye (slideK) next, and the next cabinet (slideR) last, so
+// it never runs into the selected one's right side, which grows as it shuts. The swing is spread over 70% of the move
+// so its front pulls back gently.
+export const SWING_TICKS = 56, SWING_SHUT = 0.7, SLIDE_FROM = 0, SLIDE_END = 0.7;
 export const swingAngle = q => CAB_ANGLE * (1 - easeIO(clamp(q, 0, 1)));
-export const slideK = q => easeIO(clamp((q - SLIDE_FROM) / (1 - SLIDE_FROM), 0, 1));
+const slideT = q => clamp((q - SLIDE_FROM) / (SLIDE_END - SLIDE_FROM), 0, 1);
+const easeOut = (t, p) => 1 - Math.pow(1 - t, p);
+export const slideK = q => easeOut(slideT(q), 2);
+export const slideL = q => easeOut(slideT(q), 2.5);
+export const slideR = q => easeOut(slideT(q), 1.3);
