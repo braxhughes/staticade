@@ -1,0 +1,8 @@
+# www.staticade.com redirect Worker: 301 to https://staticade.com, keeping path and query
+name = "staticade-www"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = false
+routes = [
+  { pattern = "www.staticade.com", custom_domain = true }
+]

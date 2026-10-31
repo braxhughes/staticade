@@ -152,13 +152,32 @@ export function buildCabinetGeometry(PAL, marquee, sub, rnd, room, max) {
   return { n: cbN, X: cbX, Y: cbY, Z: cbZ, S: cbS, R: cbR, G: cbG, B: cbB, A: cbA, Grp: cbGrp };
 }
 
-// opts: { W, H, marquee, sub, palette, rnd, hint, onToss, onClunk, onDone }
+// opts: { W, H, marquee, sub, palette, rnd, hint, canLobby, onToss, onClunk, onDone }
 export function createCabinet(opts = {}) {
   const W = opts.W || 400, H = opts.H || 300, CX = W / 2;
   const PAL = Object.assign({}, DEFAULT_PALETTE, opts.palette || {});
   const rnd = opts.rnd || Math.random;
   const marquee = opts.marquee || 'ARCADE', sub = opts.sub || '';
-  const hint = opts.hint || 'FIRE / CLICK: INSERT COIN    ESC: SKIP';
+  // the hints say what the keys do now. Esc / Backspace leave for the lobby on both screens; on the coin door FIRE or a
+  // click drops the coin, during the dolly FIRE or a click skips to the title (the hint says FIRE, the coin door taught CLICK = FIRE). Touch players (a coarse pointer, as the lobby
+  // decides its TAP hint) have no Esc, so they see the tap only.
+  const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  // Esc only promises the lobby where there is one. The cabinet is built before the lobby registers itself, so opts.canLobby
+  // (a getter) is asked at draw time; both strings per screen are built here once. No canLobby option means a lobby is assumed.
+  const hintLobby = opts.hint || (touch ? 'TAP: INSERT COIN' : 'FIRE / CLICK: INSERT COIN   ESC: LOBBY');
+  const hintAlone = opts.hint || (touch ? 'TAP: INSERT COIN' : 'FIRE / CLICK: INSERT COIN');
+  const skipLobby = touch ? 'TAP: SKIP' : 'FIRE: SKIP   ESC: LOBBY'; // short: it sits right of the coin door as the camera pans
+  const skipAlone = touch ? 'TAP: SKIP' : 'FIRE: SKIP';
+  // kept. No canLobby option means "lobby exists", because the arcade is the default home of a cabinet and a game that
+  // runs alone must say so on purpose (starfall passes canLobby).
+  const canLobby = typeof opts.canLobby === 'function' ? opts.canLobby : null;
+  // the ONE place that picks the strings. draw() and hints() both read this reused object, so they cannot drift apart.
+  const picked = { door: hintLobby, dolly: skipLobby };
+  function pick() {
+    const l = canLobby === null || canLobby();
+    picked.door = l ? hintLobby : hintAlone; picked.dolly = l ? skipLobby : skipAlone;
+    return picked;
+  }
 
   const geo = buildCabinetGeometry(PAL, marquee, sub, rnd, true, 9000);
   const cbX = geo.X, cbY = geo.Y, cbZ = geo.Z, cbS = geo.S, cbR = geo.R, cbG = geo.G, cbB = geo.B, cbA = geo.A, cbGrp = geo.Grp, cbN = geo.n;
@@ -235,14 +254,17 @@ export function createCabinet(opts = {}) {
     proj(32, 105, -6); quadCorner(1, PX, PY, PZ, 1, 0);
     proj(-32, 153, -6); quadCorner(2, PX, PY, PZ, 0, 1);
     proj(32, 153, -6); quadCorner(3, PX, PY, PZ, 1, 1);
-    if (!coinIn) text(hint, CX, 288, PAL.dim, 1, 'c', Math.min(1, t / 60) * 0.9);
-    else if (ct < PUSH_T1 - 1) text('ANY KEY: SKIP', W - 6, 290, PAL.dim, 1, 'r', 0.5);
+    const hs = pick();
+    if (!coinIn) text(hs.door, CX, 288, PAL.dim, 1, 'c', Math.min(1, t / 60) * 0.9);
+    else if (ct < PUSH_T1 - 1) text(hs.dolly, W - 6, 290, PAL.dim, 1, 'r', 0.5);
   }
 
   return {
     // restart the intro from the coin door
+    // read only, the two hint strings the screens show right now (the same pick() that draw() calls)
+    hints() { return pick(); },
     reset() { t = 0; cabCoin = -1; cabHold = -1; clunked = false; },
-    // one 60 Hz tick. fire = insert coin; skip = any other key
+    // one 60 Hz tick. fire = insert coin; skip = any other key (the app takes Esc / Backspace for the lobby before this)
     tick(fire, skip) {
       t++;
       if (cabCoin < 0) {

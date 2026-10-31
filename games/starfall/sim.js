@@ -643,7 +643,9 @@ export function createSim({ seed = 0, mode = 'arcade', infiniteLives = false } =
     // drain(fn): fn(buf, offset) per pending event, oldest first; buf[offset] is the EV_* type
     drain(fn) { while (evCount) { fn(ev, evHead * EVS); evHead = (evHead + 1) % EVN; evCount--; } },
     clearEvents() { evHead = 0; evCount = 0; },
-    player, wing, peelers, enemies, ps, eb, boss, comet,
+    // `comet` is only the test hook below. A state-object `comet` key here was always overwritten by it, so render/core.js
+    // cometLayer has always read the hook (comet.on undefined: the comet body is never drawn, only its trail). Open question in the log.
+    player, wing, peelers, enemies, ps, eb, boss,
     ctx: S,
     get seed() { return seed; }, get mode() { return mode; }, get rng() { return rng; },
     get state() { return S.state; }, get stateT() { return S.stateT; }, get frame() { return S.frame; },

@@ -223,7 +223,7 @@ addEventListener('keydown', e => { // typing a letter on the name entry screen
 function setApp(s) { app = s; ui.appT = 0; syncMusic(); }
 
 const cab = createCabinet({
-  W, H, marquee: 'STARFALL', sub: 'FIXED SHOOTER',
+  W, H, marquee: 'STARFALL', sub: 'FIXED SHOOTER', canLobby: () => ui.canLobby,
   palette: { teal: COL.teal, amber: COL.amber, gold: COL.gold, dim: COL.dim },
   onToss() { bind.sfxName('toss'); },
   onClunk() { bind.sfxName('clunk'); title.scatter(); },
@@ -602,6 +602,7 @@ window.SF = {
   daily() { return chooseDaily(); }, // remote on, a promise ('daily' once the run started, null if the board failed)
   // modes: scores(board, key) reads a board; page(name) shows a title page; attractNow() / idle() drive attract mode;
   // nameEntry(name) types a name on the entry screen and saves; lastSubmit() the saved result (or null)
+  cabinetHints() { return cab.hints(); }, // read only
   app() { return app; }, // the app state even when a run is on (state shows the sim state then)
   away() { return away; },
   paused() { return ui.paused; },
