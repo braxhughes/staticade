@@ -30,8 +30,16 @@ class Stmt {
   }
 }
 
+// Cloudflare D1's limits where they are lower than SQLite's (https://developers.cloudflare.com/d1/platform/limits/),
+// so SQL that D1 would refuse fails here too. compoundSelect: D1 refuses a compound SELECT of more than 5 terms
+// ("too many terms in compound SELECT", seen on the real D1; the docs page does not list it). The rest are on that page:
+// statement length 100,000 bytes, 100 bound parameters, 100 columns per table, 2 MB string or row, 32 arguments per
+// SQL function, 50-byte LIKE or GLOB pattern.
+export const D1_LIMITS = Object.freeze({ compoundSelect: 5, sqlLength: 100000, variableNumber: 100, column: 100,
+  length: 2000000, functionArg: 32, likePatternLength: 50 });
+
 export function sqliteD1(path = ':memory:') {
-  const db = new DatabaseSync(path);
+  const db = new DatabaseSync(path, { limits: { ...D1_LIMITS } });
   return {
     raw: db,
     prepare: (sql) => new Stmt(db, sql),

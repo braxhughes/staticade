@@ -116,13 +116,19 @@ CREATE INDEX IF NOT EXISTS season_runs_entry ON season_runs (entry);
 --   lvl k = 0..4: players with avg5 > 0 per prefix avg5 >> (6 * k). Level 0 is the exact avg5, level 1 groups 64
 --   neighbouring values, level 2 groups 4,096, and so on. "Players below X" is the sum, at each level, of X's
 --   lower siblings (at most 63 rows a level), so it is exact and costs at most about 5 x 63 rows to read.
+-- Cloudflare D1 allows at most 5 terms in one compound SELECT (node:sqlite allows 500), so each set of levels
+-- below is written as two additive upserts of at most 4 terms. Adding 1 to the same keys in two statements is the
+-- same as in one. server/sqlite-d1.js sets the same limit, so a longer chain fails the tests.
 CREATE TRIGGER IF NOT EXISTS ratings_added AFTER INSERT ON ratings BEGIN
   INSERT INTO board_size (game, ver, board, n)
     SELECT new.game, new.ver, printf('rank:%d:%d:%016d', new.season, l.lvl, l.pre), 1 FROM (
       SELECT 9 AS lvl, 0 AS pre UNION ALL SELECT 8, 0 WHERE new.avg5 > 0
-      UNION ALL SELECT 0, new.avg5 WHERE new.avg5 > 0 UNION ALL SELECT 1, new.avg5 >> 6 WHERE new.avg5 > 0
-      UNION ALL SELECT 2, new.avg5 >> 12 WHERE new.avg5 > 0 UNION ALL SELECT 3, new.avg5 >> 18 WHERE new.avg5 > 0
-      UNION ALL SELECT 4, new.avg5 >> 24 WHERE new.avg5 > 0) AS l WHERE true
+      UNION ALL SELECT 0, new.avg5 WHERE new.avg5 > 0 UNION ALL SELECT 1, new.avg5 >> 6 WHERE new.avg5 > 0) AS l WHERE true
+    ON CONFLICT (game, ver, board) DO UPDATE SET n = n + 1;
+  INSERT INTO board_size (game, ver, board, n)
+    SELECT new.game, new.ver, printf('rank:%d:%d:%016d', new.season, l.lvl, l.pre), 1 FROM (
+      SELECT 2 AS lvl, new.avg5 >> 12 AS pre UNION ALL SELECT 3, new.avg5 >> 18
+      UNION ALL SELECT 4, new.avg5 >> 24) AS l WHERE new.avg5 > 0
     ON CONFLICT (game, ver, board) DO UPDATE SET n = n + 1;
 END;
 CREATE TRIGGER IF NOT EXISTS ratings_moved AFTER UPDATE OF avg5 ON ratings WHEN old.avg5 <> new.avg5 BEGIN
@@ -132,8 +138,11 @@ CREATE TRIGGER IF NOT EXISTS ratings_moved AFTER UPDATE OF avg5 ON ratings WHEN 
     printf('rank:%d:3:%016d', old.season, old.avg5 >> 18), printf('rank:%d:4:%016d', old.season, old.avg5 >> 24));
   INSERT INTO board_size (game, ver, board, n)
     SELECT new.game, new.ver, printf('rank:%d:%d:%016d', new.season, l.lvl, l.pre), 1 FROM (
-      SELECT 8 AS lvl, 0 AS pre UNION ALL SELECT 0, new.avg5 UNION ALL SELECT 1, new.avg5 >> 6
-      UNION ALL SELECT 2, new.avg5 >> 12 UNION ALL SELECT 3, new.avg5 >> 18 UNION ALL SELECT 4, new.avg5 >> 24) AS l WHERE new.avg5 > 0
+      SELECT 8 AS lvl, 0 AS pre UNION ALL SELECT 0, new.avg5 UNION ALL SELECT 1, new.avg5 >> 6) AS l WHERE new.avg5 > 0
+    ON CONFLICT (game, ver, board) DO UPDATE SET n = n + 1;
+  INSERT INTO board_size (game, ver, board, n)
+    SELECT new.game, new.ver, printf('rank:%d:%d:%016d', new.season, l.lvl, l.pre), 1 FROM (
+      SELECT 2 AS lvl, new.avg5 >> 12 AS pre UNION ALL SELECT 3, new.avg5 >> 18 UNION ALL SELECT 4, new.avg5 >> 24) AS l WHERE new.avg5 > 0
     ON CONFLICT (game, ver, board) DO UPDATE SET n = n + 1;
 END;
 CREATE TRIGGER IF NOT EXISTS ratings_removed AFTER DELETE ON ratings BEGIN
@@ -144,10 +153,13 @@ CREATE TRIGGER IF NOT EXISTS ratings_removed AFTER DELETE ON ratings BEGIN
     printf('rank:%d:3:%016d', old.season, old.avg5 >> 18), printf('rank:%d:4:%016d', old.season, old.avg5 >> 24));
 END;
 -- A database made before these counts existed: fill them once from ratings (only while there are none, so applying
--- this file again never counts anyone twice).
+-- this file again never counts anyone twice). The levels 0..4, 8, 9 are i + 8 * j over two short lists (D1's 5-term
+-- compound limit), so the one "only while there are none" check stays in one statement.
 INSERT INTO board_size (game, ver, board, n)
   SELECT r.game, r.ver, printf('rank:%d:%d:%016d', r.season, k.lvl, CASE WHEN k.lvl >= 8 THEN 0 ELSE r.avg5 >> (6 * k.lvl) END), COUNT(*)
-  FROM ratings AS r, (SELECT 0 AS lvl UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 8 UNION ALL SELECT 9) AS k
+  FROM ratings AS r, (SELECT a.i + 8 * b.j AS lvl
+    FROM (SELECT 0 AS i UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4) AS a,
+         (SELECT 0 AS j UNION ALL SELECT 1) AS b WHERE b.j = 0 OR a.i < 2) AS k
   WHERE (k.lvl = 9 OR r.avg5 > 0) AND NOT EXISTS (SELECT 1 FROM board_size WHERE board LIKE 'rank:%')
   GROUP BY r.game, r.ver, r.season, k.lvl, CASE WHEN k.lvl >= 8 THEN 0 ELSE r.avg5 >> (6 * k.lvl) END;
 
