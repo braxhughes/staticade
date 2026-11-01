@@ -214,10 +214,11 @@ while [ $# -gt 0 ]; do
   shift
 done
 echo "curl $url origin=$origin" >> "${log}"
-code=200; body='<title>x</title>'; h=''
+code=200; body=''; bodyf=''; h=''
 case "$url" in
-  https://staticade.com/) [ "$STUB_BREAK" = root ] && { code=307; body=''; } ;;
-  https://staticade.com/starfall) ;;
+  https://staticade.com/) bodyf="${path.join(d, 'index.html')}"; [ "$STUB_BREAK" = root ] && { code=307; bodyf=''; } ;;
+  https://staticade.com/starfall) bodyf="${path.join(d, 'starfall.html')}" ;;
+  https://staticade.com/starfall.html) code=307; h='location: /starfall' ;;
   https://staticade.com/server/client.js) body=$(cat "${builtClient}"); [ "$STUB_BREAK" = client ] && body="export const REMOTE_LEADERBOARD_URL = '';" ;;
   https://staticade.com/games/starfall/defs.js) body=$(cat "${path.join(bin, 'defs.js')}"); [ "$STUB_BREAK" = stale ] && body="export const GAME_VERSION = 'old';" ;;
   'https://api.staticade.com/board?game=starfall')
@@ -227,7 +228,7 @@ case "$url" in
   *) code=404; body='' ;;
 esac
 printf 'HTTP/2 %s\\r\\n%s\\r\\n\\r\\n' "$code" "$h" > "$hdr"
-printf '%s\\n' "$body" > "$out"
+if [ -n "$bodyf" ]; then cat "$bodyf" > "$out"; else printf '%s\\n' "$body" > "$out"; fi
 printf '%s' "$code"
 `, { mode: 0o755 });
   const toml = path.join(bin, 'site-wrangler.toml');

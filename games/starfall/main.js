@@ -7,6 +7,7 @@ import { createLoop } from '../../engine/loop.js';
 import { createInput, M_UP, M_DOWN, M_FIRE, M_ALT, M_BACK, M_ANY, M_PAUSE, M_MUTE } from '../../engine/input.js';
 import { createRecorder } from '../../engine/replay.js';
 import { createCabinet } from '../../arcade/cabinet.js';
+import { createRotate } from '../../arcade/rotate.js';
 import { createSim, GAME_ID, GAME_VERSION, TYPE_IDS } from './sim.js';
 import { W, H, CX, EV_SFX, EV_HITSTOP, EV_STATE, EV_POPUP, EV_EXPLODE, EV_FX, STATES, SFX_NAMES, SFX_ID } from './defs.js';
 import { createAudioBind, ZONE_TRACKS, BOSS_TRACKS } from './audio-bind.js';
@@ -45,6 +46,7 @@ const bind = createAudioBind();
 function mute(m) { ui.muted = !!m; bind.setMuted(ui.muted); }
 
 const text = createText(gfx.dot, ui);
+const rotate = createRotate({ gfx, text }); // the turn-sideways screen (touch, upright) and the bezel beside the playfield
 const fx = createFx(gfx.dot);
 // the renderer flushes through this gate so a screen can add dots (banner, labels) before the final draw
 let preFlush = null;
@@ -191,7 +193,7 @@ addEventListener('click', e => { if (e.target === canvas && onTable() && hitShar
 const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 ui.touchUi = coarse;
 let tapLobby = false, lobbyAsk = false;
-function onLobbyBtn() { return !away && ui.paused && ui.canLobby && ui.touchUi && app === 'game'; }
+function onLobbyBtn() { return !away && ui.paused && ui.canLobby && ui.touchUi && app === 'game' && !rotate.shown(); } // not behind the turn-sideways screen
 function hitLobby(cx, cy) {
   const r = canvas.getBoundingClientRect(), per = gfx.toFieldX(1) - gfx.toFieldX(0);
   if (!(per > 0)) return false;
@@ -472,6 +474,18 @@ export function enterStarfall() {
 let audioPaused = false;
 function tick() {
   if (away) return; // loop.stop() lets the rest of this frame's steps run; after leaving, none of them may touch Starfall
+  // a touch phone held upright shows the turn-sideways screen. A run in play is paused exactly like the pause button
+  // (ui.paused) and the tick holds still: no sim frame runs and none is recorded. Turning sideways takes the screen away and the
+  // game stays on its pause screen until the player resumes (the tick after the turn is held too).
+  // the results screen and the name entry are held too (their timers do not count, nothing auto-advances, nothing is
+  // submitted behind the screen); they carry on from where they were as soon as the phone is sideways, with no extra tap.
+  // The cabinet, title and menus are not held (a touch-phone test drives the cabinet upright); the screen is only drawn over them.
+  if (rotate.tick() && (app === 'game' || app === 'results' || app === 'entry')) {
+    input.poll(); input.clearLatches(); lobbyAsk = false; tapLobby = false; tapShare = false; typed = 0;
+    if (app === 'game' && !ui.paused) ui.paused = true;
+    if (ui.paused !== audioPaused) { audioPaused = ui.paused; bind.pause(audioPaused); }
+    return;
+  }
   ui.F++;
   input.poll();
   const m = input.menu;
@@ -569,6 +583,11 @@ function render(al) {
   if (away) return; // no stray Starfall frame over the lobby after leaving
   fpsT[fpsN++ & 255] = performance.now();
   if (gfx.lost) return;
+  if (rotate.shown()) { rotate.draw(app === 'game' ? 'YOUR RUN IS PAUSED' : app === 'results' || app === 'entry' ? 'YOUR SCORE WAITS' : ''); return; } // rotate screen
+  drawApp(al);
+  rotate.drawBezel(); // sideways, the strips beside the playfield get dim bezel dots instead of black
+}
+function drawApp(al) {
   const a = ui.paused || frozen ? 1 : al;
   if (app === 'cabinet') cab.render(gfx, crt, text, a, ui.F, ui.crtOn, drawScreen);
   else if (app === 'title') { gfx.reset(); drawScreen(); crt.flush(gfx.count(), 0, 0, ui.crtOn, ui.F / 60); }
@@ -606,6 +625,9 @@ window.SF = {
   app() { return app; }, // the app state even when a run is on (state shows the sim state then)
   away() { return away; },
   paused() { return ui.paused; },
+  rotateShown() { return rotate.shown(); }, // the turn-sideways screen is up (touch device held upright); read only
+  ticks() { return { appT: ui.appT, entryT: entry.t }; }, // ticks the results timer and the name-entry countdown have counted (held behind the turn-sideways screen); read only
+  bezelDots() { return rotate.bezelDots(); }, // dots in the bezel strips (0 when the window is not wider than 4:3)
   touchUi() { return !!ui.touchUi; }, // touch player (coarse pointer or a touch seen this session)
   lobbyButton() { return ui.lobbyBtnF !== undefined && ui.F - ui.lobbyBtnF <= 2; }, // the touch LOBBY button was drawn in the last frames
   scores(board = 'all', key, unique = true) { return lb.getBoard({ game: GAME_ID, board, key, limit: 10, unique }); }, // unique false = every saved run, not the best per player

@@ -14,6 +14,7 @@ import { createAudio } from '../engine/audio.js';
 import { TRACKS } from '../games/starfall/music.js';
 import { SFX } from '../games/starfall/sfx.js';
 import { STAR_COLS } from '../games/starfall/sprites.js';
+import { createRotate } from './rotate.js';
 import { buildCabinetGeometry, DEFAULT_PALETTE, G_LAMP, G_INSERT, G_CREDIT1, G_MARQ, G_BTN } from './cabinet.js';
 import { MACHINES, START_INDEX } from './machines.js';
 import { ARCADE_NAME, ARCADE_TAGLINE } from './brand.js';
@@ -42,6 +43,7 @@ const ui = { F: 0, crtOn: true, muted: false };
 try { ui.crtOn = localStorage.getItem('starfall.crt') !== '0'; } catch (e) {}
 function setCrt(v) { ui.crtOn = v; try { localStorage.setItem('starfall.crt', v ? '1' : '0'); } catch (e) {} }
 const text = createText(dot, ui);
+const rotate = createRotate({ gfx, text }); // the turn-sideways screen (touch, upright)
 
 // ---------- audio ----------
 const audio = createAudio({ tracks: TRACKS, sfx: SFX });
@@ -204,6 +206,9 @@ let Fx = 0, Fy = 0, Fz = -1, Rx = 1, Rz = 0, Ux = 0, Uy = 1, Uz = 0, focal = 190
 // the last projection lives in a typed array, not in module-level lets (a double stored to a module let can be
 // boxed as a fresh heap number on each write; proj runs for every dot, so that was per-frame garbage)
 const PP = new Float64Array(3);
+// how far past the 400 x 300 field a dot may land and still be drawn: the room fills a wider-than-4:3 window,
+// so the left and right limits grow by the extra field units shown there (set each frame from gfx.view)
+const LIM = new Float64Array(2).fill(20);
 function basis() {
   const fx = cam[3] - cam[0], fy = cam[4] - cam[1], fz = cam[5] - cam[2];
   const fl = Math.hypot(fx, fy, fz); Fx = fx / fl; Fy = fy / fl; Fz = fz / fl;
@@ -216,7 +221,7 @@ function proj(x, y, z) {
   PP[2] = dx * Fx + dy * Fy + dz * Fz;
   if (PP[2] < 1) return false;
   PP[0] = CX + focal * (dx * Rx + dz * Rz) / PP[2]; PP[1] = H / 2 - focal * (dx * Ux + dy * Uy + dz * Uz) / PP[2];
-  return PP[0] > -20 && PP[0] < W + 20 && PP[1] > -20 && PP[1] < H + 20;
+  return PP[0] > -LIM[0] && PP[0] < W + LIM[1] && PP[1] > -20 && PP[1] < H + 20;
 }
 // the cabinet being drawn: at angle 0 it stands flush (exactly the old row's placement); otherwise it is swung open
 // about the hinge at its back-left corner (local x -38, z -70), its front turned toward the left of the screen
@@ -383,6 +388,9 @@ function startImport() {
 }
 
 function tick() {
+  // held upright on a touch phone the turn-sideways screen is drawn over the lobby (see render). The lobby itself is not
+  // frozen: a touch-phone test (390x844, upright) still drives it with Enter, and only the run in Starfall is paused.
+  rotate.tick();
   ui.F++;
   input.poll();
   const m = input.menu;
@@ -635,6 +643,8 @@ function render(al) {
   fpsT[fpsN++ & 255] = performance.now();
   posterDrawn.fill(0);
   if (gfx.lost) return;
+  if (rotate.shown()) { rotate.draw(''); return; } // rotate screen
+  LIM[0] = 20 + gfx.view.padX; LIM[1] = 20 + gfx.view.padX; // the room fills the width (see the end of this function)
   const time = (ui.F + al) / 60;
   const inLobby = mode === 'lobby' || mode === 'swing';
   // camera
@@ -728,7 +738,7 @@ function render(al) {
   }
   if (inLobby) drawHud(time, al);
   gfx.clearCanvas();
-  gfx.toViewport();
+  gfx.toFull(); // the whole canvas: wider than 4:3 shows more of the room at the sides instead of black bars (same field, same scale)
   gfx.drawDots(gfx.count(), 0, 0);
 }
 
@@ -1093,6 +1103,8 @@ window.LOBBY = {
   manualHandoff(v = true) { manualHandoff = !!v; },
   proceed() { startImport(); },
   returnToLobby,
+  rotateShown() { return rotate.shown(); }, // the turn-sideways screen is up (touch device held upright); read only
+  fillX() { return +gfx.view.padX.toFixed(2); }, // field units shown past each side of the 400 x 300 field (0 at 4:3)
   crt(v) { setCrt(v !== false); },
   fps,
   loseContext(ms = 300) {

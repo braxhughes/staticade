@@ -47,14 +47,17 @@ export function aimGlow(R, x, y, t) {
   for (let k = 0; k < 6; k++) { const q = k / 6 * TAU; R.dot(x + Math.cos(q) * r, y + Math.sin(q) * r, 0.9, 1, .3, .6, a); }
 }
 
+// reads sim.cometBody (the state object; sim.comet is the test hook). `drawn` is a read-only test tap: body dots drawn last
+// frame (10 ring + 1 core, 0 when no comet), with the interpolated centre in `x`/`y`.
 export const cometLayer = {
-  id: 'comet',
+  id: 'comet', drawn: 0, x: 0, y: 0,
   draw(R, sim, al) {
-    const comet = sim.comet;
-    if (!comet.on) return;
+    const comet = sim.cometBody;
+    if (!comet.on) { cometLayer.drawn = 0; return; }
     const x = comet.px + (comet.x - comet.px) * al, y = comet.py + (comet.y - comet.py) * al;
     for (let i = 0; i < 10; i++) { const a = i / 10 * TAU + R.ui.F * 0.1; R.dot(x + Math.cos(a) * 3, y + Math.sin(a) * 3, 1.1, .5, .9, 1, 1); }
     R.dot(x, y, 2.4, 1, 1, 1, 1);
+    cometLayer.drawn = 11; cometLayer.x = x; cometLayer.y = y;
   }
 };
 

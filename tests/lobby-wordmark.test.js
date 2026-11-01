@@ -19,6 +19,15 @@ test('brand: name and tagline are drawable in the dot font', () => {
   }
 });
 
+// the only name mentions allowed outside brand.js are these two static <title> lines, matched as whole lines.
+const TITLE_LINES = { 'index.html': `<title>${ARCADE_NAME}</title>`, 'starfall.html': `<title>STARFALL \u00b7 ${ARCADE_NAME}</title>` };
+const withoutTitleLine = (rel, text) => {
+  const want = TITLE_LINES[rel]; if (!want) return text;
+  const lines = text.split('\n'), i = lines.findIndex(l => l === want);
+  if (i >= 0) lines.splice(i, 1);
+  return lines.join('\n');
+};
+
 test('the arcade name string appears in no source file except arcade/brand.js', () => {
   const hits = [];
   const walk = d => {
@@ -26,7 +35,7 @@ test('the arcade name string appears in no source file except arcade/brand.js', 
       if (['node_modules', '.git', '.claude', 'agent_docs', 'docs', 'shots'].includes(e.name)) continue;
       const p = path.join(d, e.name);
       if (e.isDirectory()) walk(p);
-      else if (/\.(js|mjs|html)$/.test(e.name) && !/\.test\.js$/.test(e.name) && fs.readFileSync(p, 'utf8').includes(ARCADE_NAME)) hits.push(path.relative(root, p));
+      else if (/\.(js|mjs|html)$/.test(e.name) && !/\.test\.js$/.test(e.name) && withoutTitleLine(path.relative(root, p), fs.readFileSync(p, 'utf8')).includes(ARCADE_NAME)) hits.push(path.relative(root, p));
     }
   };
   walk(root);
@@ -186,7 +195,7 @@ test('the arcade name appears in no source file except arcade/brand.js, ignoring
       if (['node_modules', '.git', '.claude', 'agent_docs', 'docs', 'shots'].includes(e.name)) continue;
       const p = path.join(d, e.name);
       if (e.isDirectory()) walk(p);
-      else if (/\.(js|mjs|html)$/.test(e.name) && !/\.test\.js$/.test(e.name) && fs.readFileSync(p, 'utf8').toLowerCase().includes(needle)) hits.push(path.relative(root, p));
+      else if (/\.(js|mjs|html)$/.test(e.name) && !/\.test\.js$/.test(e.name) && withoutTitleLine(path.relative(root, p), fs.readFileSync(p, 'utf8')).toLowerCase().includes(needle)) hits.push(path.relative(root, p));
     }
   };
   walk(root);

@@ -82,6 +82,26 @@ if [ "$MODE" = deploy ]; then
   cp "$WRANGLER_TOML" "$WORK/wrangler.toml"
   grep -qx 'name = "staticade"' "$WORK/wrangler.toml" || die "copied wrangler.toml has no line name = \"staticade\"; refusing. Nothing deployed."
   grep -qx 'directory = "./site"' "$WORK/wrangler.toml" || die "copied wrangler.toml has no line directory = \"./site\"; refusing. Nothing deployed."
+  # How the assets Worker answers /starfall.html depends on [assets] html_handling (Cloudflare
+  # default when the line is absent: "auto-trailing-slash").
+  #   auto-trailing-slash, drop-trailing-slash: /starfall serves starfall.html and /starfall.html
+  #     answers a 307 (or 308) redirect to /starfall. The smoke check wants exactly that redirect.
+  #   anything else, none included: refused here, before anything is deployed. With none,
+  #     /starfall has no file behind it, and force-trailing-slash would redirect /starfall to
+  #     /starfall/. The smoke check expects neither.
+  HH_LINES=$(grep -cE '^[[:space:]]*html_handling[[:space:]]*=' "$WORK/wrangler.toml" || true)
+  case "$HH_LINES" in
+    0) HTML_HANDLING=auto-trailing-slash ;;
+    1)
+      HH_RAW=$(grep -E '^[[:space:]]*html_handling[[:space:]]*=' "$WORK/wrangler.toml" | tr -d '\r')
+      HTML_HANDLING=$(printf '%s\n' "$HH_RAW" | sed -nE 's/^[[:space:]]*html_handling[[:space:]]*=[[:space:]]*"([^"]*)"[[:space:]]*$/\1/p')
+      case "$HTML_HANDLING" in
+        auto-trailing-slash|drop-trailing-slash) ;;
+        none) die "copied wrangler.toml sets html_handling to none, which is refused: /starfall would have no page behind it. Use auto-trailing-slash or drop-trailing-slash. Line: $HH_RAW. Nothing deployed." ;;
+        *) die "copied wrangler.toml html_handling must be auto-trailing-slash or drop-trailing-slash; refusing. Line: $HH_RAW. Nothing deployed." ;;
+      esac ;;
+    *) die "copied wrangler.toml sets html_handling more than once; refusing. Nothing deployed." ;;
+  esac
 fi
 
 # 1. Extract exactly the files the browser loads.
@@ -173,18 +193,32 @@ fetch() { # url [origin]; sets CODE, fills $BODY and $HDRS
   [ -z "${2:-}" ] || args+=(-H "Origin: $2")
   CODE=$(curl "${args[@]}" "$1" 2>/dev/null) || CODE=000
 }
+# Header lookups in $HDRS: name matched in any case, CR stripped, spaces or tabs after the colon
+# skipped. hdr_count prints how many lines carry that header; hdr_value prints the first value.
+hdr_count() { tr -d '\r' < "$HDRS" | awk -v n="$1" 'tolower(substr($0, 1, length(n) + 1)) == n ":" { c++ } END { print c + 0 }'; }
+hdr_value() { tr -d '\r' < "$HDRS" | awk -v n="$1" 'tolower(substr($0, 1, length(n) + 1)) == n ":" && !f { v = substr($0, length(n) + 2); sub(/^[ \t]+/, "", v); print v; f = 1 }'; }
 FAILS=""
 note() { FAILS="$FAILS
   $1"; }
 smoke_round() {
   FAILS=""
+  # Pages must be the built pages byte for byte (like SAME_BYTES below). A fallback index page,
+  # a 200 error page or anyone else's page fails, whatever its <title> says.
   fetch "$SITE_URL/"
   if [ "$CODE" != 200 ]; then note "$SITE_URL/ -> HTTP $CODE (want 200, no redirect)"
-  elif ! grep -q '<title>' "$BODY"; then note "$SITE_URL/ -> no <title>"; fi
+  elif ! cmp -s "$BODY" "$SITE/index.html"; then note "$SITE_URL/ -> 200 but not the built index.html"; fi
 
   fetch "$SITE_URL/starfall"
   if [ "$CODE" != 200 ]; then note "$SITE_URL/starfall -> HTTP $CODE (want 200, no redirect)"
-  elif ! grep -q '<title>' "$BODY"; then note "$SITE_URL/starfall -> no <title>"; fi
+  elif ! cmp -s "$BODY" "$SITE/starfall.html"; then note "$SITE_URL/starfall -> 200 but not the built starfall.html"; fi
+
+  # /starfall.html: see html_handling where the copied wrangler.toml is checked.
+  fetch "$SITE_URL/starfall.html"
+  local loc
+  loc=$(hdr_value location)
+  if [ "$CODE" != 307 ] && [ "$CODE" != 308 ]; then note "$SITE_URL/starfall.html -> HTTP $CODE (want a 307 or 308 redirect to /starfall)"
+  elif [ "$(hdr_count location)" != 1 ]; then note "$SITE_URL/starfall.html -> $CODE without exactly one location header"
+  elif [ "$loc" != /starfall ] && [ "$loc" != "$SITE_URL/starfall" ]; then note "$SITE_URL/starfall.html -> $CODE to '$loc' (want /starfall)"; fi
 
   local f
   for f in "${SAME_BYTES[@]}"; do
@@ -199,8 +233,13 @@ smoke_round() {
   if [ "$CODE" != 200 ]; then note "$API_URL/board?game=starfall -> HTTP $CODE"
   else
     grep -qF '"ok":true' "$BODY" || note "$API_URL/board?game=starfall -> no \"ok\":true"
-    tr -d '\r' < "$HDRS" | grep -qix "access-control-allow-origin: $SITE_URL" \
-      || note "$API_URL/board?game=starfall -> no access-control-allow-origin: $SITE_URL"
+    # Exactly one header line, value exactly the site origin (browsers reject duplicates).
+    local acao_n
+    acao_n=$(hdr_count access-control-allow-origin)
+    if [ "$acao_n" -gt 1 ]; then note "$API_URL/board?game=starfall -> $acao_n access-control-allow-origin lines (want exactly one: $SITE_URL)"
+    elif [ "$acao_n" != 1 ] || [ "$(hdr_value access-control-allow-origin)" != "$SITE_URL" ]; then
+      note "$API_URL/board?game=starfall -> no access-control-allow-origin: $SITE_URL"
+    fi
   fi
   [ -z "$FAILS" ]
 }
@@ -211,5 +250,5 @@ until smoke_round; do
   try=$((try + 1))
   sleep "$SMOKE_WAIT"
 done
-echo "deploy-site: smoke ok: / 200, /starfall 200, live JS matches the build, board ok with CORS for $SITE_URL"
+echo "deploy-site: smoke ok: / and /starfall are the built pages, /starfall.html as html_handling $HTML_HANDLING wants, live JS matches the build, board ok with CORS for $SITE_URL"
 echo "deploy-site: deployed $SHA and smoke passed"
