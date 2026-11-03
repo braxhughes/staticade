@@ -35,6 +35,9 @@ function scratch(clientLine, extra, files = {}) {
   for (const dir of ['arcade', 'engine', 'games/starfall', 'leaderboard', 'server']) fs.mkdirSync(path.join(d, dir), { recursive: true });
   fs.writeFileSync(path.join(d, 'index.html'), '<title>x</title>');
   fs.writeFileSync(path.join(d, 'starfall.html'), '<title>x</title>');
+  fs.writeFileSync(path.join(d, 'stacklight.html'), '<title>x</title>');
+  fs.writeFileSync(path.join(d, 'robots.txt'), 'User-agent: *\nAllow: /\n');
+  fs.writeFileSync(path.join(d, 'sitemap.xml'), '<urlset></urlset>\n');
   for (const dir of ['arcade', 'engine', 'games', 'leaderboard']) fs.writeFileSync(path.join(d, dir, 'a.js'), extra && dir === 'engine' ? extra : '// ok\n');
   fs.writeFileSync(path.join(d, 'games', 'starfall', 'defs.js'), "export const GAME_VERSION = 'v-test';\n");
   fs.writeFileSync(path.join(d, 'server', 'client.js'), clientLine + '\n');
@@ -80,7 +83,9 @@ const TOML_OK = 'name = "staticade"\ncompatibility_date = "2026-10-01"\n\n[asset
 // the two pages differ, so serving one at the other's address is caught by the byte compare.
 const INDEX_PAGE = '<!doctype html>\n<title>Lobby</title>\n<p>lobby page</p>\n';
 const SF_PAGE = '<!doctype html>\n<title>Starfall</title>\n<canvas></canvas>\n';
+const SL_PAGE = '<!doctype html>\n<title>STACKLIGHT</title>\n<canvas></canvas>\n';
 const PAGES = { 'index.html': INDEX_PAGE, 'starfall.html': SF_PAGE };
+PAGES['stacklight.html'] = SL_PAGE;
 
 // A repo with a pushed upstream (a local bare repo), so the push check can pass.
 function pushedRepo(files = PAGES) {
@@ -102,6 +107,7 @@ function stubs(d) {
   fs.copyFileSync(path.join(d, 'games', 'starfall', 'defs.js'), path.join(bin, 'defs.js'));
   fs.copyFileSync(path.join(d, 'index.html'), path.join(bin, 'index.html'));
   fs.copyFileSync(path.join(d, 'starfall.html'), path.join(bin, 'starfall.html'));
+  fs.copyFileSync(path.join(d, 'stacklight.html'), path.join(bin, 'stacklight.html'));
   fs.writeFileSync(path.join(bin, 'npx'), `#!/bin/bash
 echo "npx $* | cwd-has: $(ls | tr '\\n' ' ')" >> "${log}"
 exit "\${STUB_NPX_EXIT:-0}"
@@ -136,6 +142,8 @@ case "$url" in
     [ -n "$STUB_SFH_BODY" ] && body=$STUB_SFH_BODY
     [ -n "$STUB_SFH_LOC" ] && h=$STUB_SFH_LOC
     [ "$STUB_SFH_LOC_SET" = 1 ] && h='' ;;
+  https://staticade.com/stacklight) bodyf="${path.join(bin, 'stacklight.html')}" ;;
+  https://staticade.com/stacklight.html) code=307; h='location: /stacklight' ;;
   https://staticade.com/server/client.js) bodyf="${builtClient}" ;;
   https://staticade.com/games/starfall/defs.js) bodyf="${path.join(bin, 'defs.js')}" ;;
   'https://api.staticade.com/board?game=starfall')

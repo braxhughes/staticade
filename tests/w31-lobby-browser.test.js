@@ -132,7 +132,7 @@ describe('w31 lobby in a real browser', { concurrency: false }, () => {
   test('Enter and arrows spammed mid-swing change nothing; a COMING SOON cabinet refuses and stays angled', { timeout: 60000 }, async () => {
     const { ctx, page, errors } = await open();
     await page.evaluate(() => { LOBBY.wordmarkSkip(); LOBBY.manualHandoff(true); });
-    await page.evaluate(() => LOBBY.go(0));
+    await page.evaluate(() => LOBBY.go(2));
     await page.waitForFunction(() => !LOBBY.info().moving);
     await page.keyboard.press('Enter');
     await page.waitForTimeout(100);

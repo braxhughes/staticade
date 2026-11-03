@@ -14,11 +14,11 @@ import { memoryAdapter } from '../leaderboard/storage.js';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PID = 'w31-player-0001';
 
-test('floor: exactly STACKLIGHT, STARFALL and the platform race, in that order; Starfall the only playable one', () => {
+test('floor: exactly STACKLIGHT, STARFALL and the platform race, in that order; STACKLIGHT and Starfall the playable ones', () => {
   assert.deepEqual(MACHINES.map(m => m.id), ['stacklight', 'starfall', 'ledgelords']);
   assert.deepEqual(MACHINES.map(m => m.name), ['STACKLIGHT', 'STARFALL', PLATFORM_RACE_NAME]);
   assert.equal(MACHINES[START_INDEX].id, 'starfall');
-  assert.deepEqual(MACHINES.map(m => m.playable), [false, true, false]);
+  assert.deepEqual(MACHINES.map(m => m.playable), [true, true, false]);
   assert.equal(MACHINES[1].sub, 'FIXED SHOOTER', 'Starfall marquee sub is its genre');
   assert.equal(MACHINES[2].genre, 'PLATFORM RACE');
   for (const k of ['edge', 'body', 'dark', 'marqueeTop', 'marqueeBottom', 'marqueeBox']) assert.equal(MACHINES[2].palette[k].length, 3, k);

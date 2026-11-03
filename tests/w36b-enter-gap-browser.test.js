@@ -77,7 +77,7 @@ for (const [w, h] of SIZES) {
 test('w36b: the COMING SOON poster is drawn on STACKLIGHT and LEDGE LORDS boards and not on STARFALL', async () => {
   const { ctx, page, errors } = await open(1000, 750);
   const ids = await page.evaluate(() => LOBBY.info().ids);
-  const playable = { stacklight: false, starfall: true, ledgelords: false };
+  const playable = { stacklight: true, starfall: true, ledgelords: false };
   const seen = {};
   for (let i = 0; i < ids.length; i++) {
     seen[ids[i]] = await page.evaluate(async i => { LOBBY.go(i); await __frames(90); return { shown: LOBBY.posterShown(), id: LOBBY.info().id }; }, i);

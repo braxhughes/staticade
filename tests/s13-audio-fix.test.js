@@ -86,7 +86,7 @@ test.before(async () => {
 test.after(async () => { if (browser) await browser.close(); if (server) server.close(); });
 const P = {};
 
-// ---------- M1: every map entry pinned (no browser) ----------
+// ---------- every map entry pinned (no browser) ----------
 test('map: every sim id pinned to its sound (a swap of any two entries fails); kill kinds pinned for every enemy type', () => {
   assert.deepEqual(SIM_MAP, {
     fire: 'shot', ding: 'hit', pop: 'kill', big: 'panelBreak', die: 'playerDie', kindle: 'kindle', life: 'extraLife', warp: 'warp',
@@ -99,7 +99,7 @@ test('map: every sim id pinned to its sound (a swap of any two entries fails); k
   assert.equal(STARLIGHT_PERFECT, 'coin'); assert.ok(SFX[STARLIGHT_PERFECT]);
 });
 
-// ---------- finding 1, M14: keys while paused; pause owns the clock ----------
+// ---------- keys while paused; pause owns the clock ----------
 async function scenarioPause() {
   const { ctx, page, problems } = await open();
   const out = { problems };
@@ -137,7 +137,7 @@ test('pause: no key but P (or fire) resumes a paused audio clock; P resumes it (
   noProblems(o, 'pause');
 });
 
-// ---------- finding 2, M7, M18: a real stage clear; jingles never block a track change; mute ----------
+// ---------- a real stage clear; jingles never block a track change; mute ----------
 async function scenarioClear() {
   const { ctx, page, problems } = await open();
   const out = { problems };
@@ -155,7 +155,7 @@ async function scenarioClear() {
   out.start6 = (await aud(page)).track;
   await page.waitForTimeout(3500);
   out.later6 = (await aud(page)).track;
-  // mute during a jingle: the jingle stops; music() ignores nothing while muted (M18); unmute brings the wanted track
+  // mute during a jingle: the jingle stops; music() ignores nothing while muted; unmute brings the wanted track
   await stepUntil(page, "SF.state === 'clear'");
   out.clear3 = (await aud(page)).track;
   await page.keyboard.press('KeyM');
@@ -186,7 +186,7 @@ test('stage clear: stageClear jingle; the next stage, SF.start and mute each sto
   noProblems(o, 'clear');
 });
 
-// ---------- finding 2, finding 3, M8, M15: a real boss kill, a natural 5 -> 6, a boss timeout ----------
+// ---------- a real boss kill, a natural 5 -> 6, a boss timeout ----------
 async function scenarioBoss() {
   const { ctx, page, problems } = await open();
   const out = { problems };
@@ -226,7 +226,7 @@ test('boss: a real kill plays bossDefeat, stage 6 then plays z2 (natural 5 -> 6)
   noProblems(o, 'boss');
 });
 
-// ---------- finding 2, M7, M19: a real game over, results, name entry, title, attract ----------
+// ---------- a real game over, results, name entry, title, attract ----------
 async function scenarioGameOver() {
   const { ctx, page, problems } = await open();
   const out = { problems };
@@ -304,7 +304,7 @@ test('STARLIGHT: one stageClear per bonus stage; life with no ship is not the ex
   noProblems(o, 'starlight');
 });
 
-// ---------- finding 4, M3: kill kinds from real kills; the Hound's pop is neutral ----------
+// ---------- kill kinds from real kills; the Hound's pop is neutral ----------
 async function scenarioKinds() {
   const { ctx, page, problems } = await open();
   const out = { problems };
@@ -376,7 +376,7 @@ test('hidden tab: suspends the audio; visible resumes only when not paused and n
   noProblems(o, 'hidden');
 });
 
-// ---------- M10: big is quieter without a boss ----------
+// ---------- big is quieter without a boss ----------
 async function scenarioVol() {
   const { ctx, page, problems } = await open();
   const out = { problems };

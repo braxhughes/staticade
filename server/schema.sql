@@ -170,8 +170,9 @@ CREATE TABLE IF NOT EXISTS hidden (
   rows  INTEGER NOT NULL
 ) WITHOUT ROWID;
 
--- Not used by the Worker any more (boards are rows above, and there is no global lock any more). Kept because
--- server/d1-adapter.js d1Storage, a general key-value adapter with a lease lock, still works on them.
+-- Boards have not lived here any more (they are rows above, and there is no global lock any more). Kept because
+-- server/d1-adapter.js d1Storage, a general key-value adapter with a lease lock, still works on them. Since the Daily ticket rules and the held-runs cap, the
+-- Worker keeps two small records here under prefixes d1Storage never uses (dailyrun:, heldip:; see the end of file).
 CREATE TABLE IF NOT EXISTS kv (
   k TEXT PRIMARY KEY NOT NULL,
   v TEXT NOT NULL
@@ -234,3 +235,11 @@ CREATE TABLE IF NOT EXISTS locks (
   owner TEXT NOT NULL,
   until INTEGER NOT NULL
 ) WITHOUT ROWID;
+
+-- w54 (audit 2026-11-01). One new index, IF NOT EXISTS: applying this file to the live database (or applying it twice)
+-- adds it and never touches a row. No new table: two server tests pin the exact list of tables (an injection that
+-- created or dropped one would show), so the new records are rows in kv under their own key prefixes (see kv):
+--   dailyrun:<day>:<game>:<pid>  value JSON { ticket, rhash, t }: the player's one ranked Daily of that day
+--   heldip:<address>:<id>        value '<id>': the address a held run (flagged.id) came from
+-- Held runs still waiting are counted per player (flagged.pid) at submit time.
+CREATE INDEX IF NOT EXISTS flagged_pid ON flagged (pid, status);

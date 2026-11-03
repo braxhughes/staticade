@@ -27,7 +27,7 @@ API_URL="https://api.staticade.com"
 WRANGLER_VERSION="4.156.0"
 SMOKE_TRIES="${SMOKE_TRIES:-6}"
 SMOKE_WAIT="${SMOKE_WAIT:-10}"
-PATHS=(index.html starfall.html arcade engine games leaderboard server/client.js)
+PATHS=(index.html starfall.html stacklight.html robots.txt sitemap.xml arcade engine games leaderboard server/client.js)
 # JS files compared byte for byte with the live site (the edge never rewrites .js).
 SAME_BYTES=(server/client.js games/starfall/defs.js)
 
@@ -124,6 +124,19 @@ rm -f "$CLIENT.bak"
 [ "$(grep -c "^export const REMOTE_LEADERBOARD_URL = '$API_URL';" "$CLIENT" || true)" = 1 ] \
   || die "REMOTE_LEADERBOARD_URL did not change exactly once"
 
+# 2b. Audit L3 (w54): switch off the test-only ?lb= override in this copy. Starfall's main.js and the lobby's
+#     lobby-board.js take ?lb=http://127.0.0.1:<port> (localhost only) to point at the local dev server. Here its
+#     address check is replaced by a regex that never matches, so ?lb= is ignored and the page uses
+#     REMOTE_LEADERBOARD_URL. Fixed-string replace (perl \Q...\E), in the built copy only. Step 3 checks it is gone.
+LB_RE='/^http:\/\/(127\.0\.0\.1|localhost)(:\d{1,5})?\/?$/'
+LB_OFF='/(?!)/'
+LB_FILES=$(cd "$SITE" && grep -rlF -- "$LB_RE" . || true)
+if [ -n "$LB_FILES" ]; then
+  while IFS= read -r f; do
+    LB_RE="$LB_RE" LB_OFF="$LB_OFF" perl -pi -e 's/\Q$ENV{LB_RE}\E/$ENV{LB_OFF}/g' "$SITE/$f" || die "could not switch off ?lb= in $f"
+  done <<< "$LB_FILES"
+fi
+
 # 3. Leak grep on the built folder, contents (text and binary) and file names, ignoring case.
 #    Fixed strings: the owner's name (whole and each word of 3+ letters), login, email, and
 #    private markers. Each marker is glued from two pieces so this file's text never contains it.
@@ -166,6 +179,16 @@ leak_scan fixed -F "$PATFILE_F" contents
 leak_scan regex -E "$PATFILE_E" contents
 leak_scan fixed -F "$PATFILE_F" names
 leak_scan regex -E "$PATFILE_E" names
+# L3 (w54): no localhost address check may be left, and every file that still reads ?lb= must carry the
+# never-matching check from step 2b.
+LB_LEFT=$(cd "$SITE" && grep -rnF -- '(127\.0\.0\.1|localhost)' . || true)
+if [ -n "$LB_LEFT" ]; then LEAKS=1; echo "deploy-site: LEAK (?lb= override), localhost address check still in the build:" >&2; printf '%s\n' "$LB_LEFT" | sed 's/^/  /' >&2; fi
+LB_READERS=$(cd "$SITE" && grep -rlF -- "get('lb')" . || true)
+if [ -n "$LB_READERS" ]; then
+  while IFS= read -r f; do
+    grep -qF -- "$LB_OFF" "$SITE/$f" || { LEAKS=1; echo "deploy-site: LEAK (?lb= override), $f reads ?lb= without the switched-off check" >&2; }
+  done <<< "$LB_READERS"
+fi
 [ "$LEAKS" -eq 0 ] || die "leak grep FAILED; nothing deployed"
 rm -f -- "$PATFILE_F" "$PATFILE_E"   # keep only site/ (and later wrangler.toml) in the work folder
 
@@ -208,17 +231,20 @@ smoke_round() {
   if [ "$CODE" != 200 ]; then note "$SITE_URL/ -> HTTP $CODE (want 200, no redirect)"
   elif ! cmp -s "$BODY" "$SITE/index.html"; then note "$SITE_URL/ -> 200 but not the built index.html"; fi
 
-  fetch "$SITE_URL/starfall"
-  if [ "$CODE" != 200 ]; then note "$SITE_URL/starfall -> HTTP $CODE (want 200, no redirect)"
-  elif ! cmp -s "$BODY" "$SITE/starfall.html"; then note "$SITE_URL/starfall -> 200 but not the built starfall.html"; fi
+  # One check per game page (Starfall, STACKLIGHT): the same rules for each.
+  local g loc
+  for g in starfall stacklight; do
+    fetch "$SITE_URL/$g"
+    if [ "$CODE" != 200 ]; then note "$SITE_URL/$g -> HTTP $CODE (want 200, no redirect)"
+    elif ! cmp -s "$BODY" "$SITE/$g.html"; then note "$SITE_URL/$g -> 200 but not the built $g.html"; fi
 
-  # /starfall.html: see html_handling where the copied wrangler.toml is checked.
-  fetch "$SITE_URL/starfall.html"
-  local loc
-  loc=$(hdr_value location)
-  if [ "$CODE" != 307 ] && [ "$CODE" != 308 ]; then note "$SITE_URL/starfall.html -> HTTP $CODE (want a 307 or 308 redirect to /starfall)"
-  elif [ "$(hdr_count location)" != 1 ]; then note "$SITE_URL/starfall.html -> $CODE without exactly one location header"
-  elif [ "$loc" != /starfall ] && [ "$loc" != "$SITE_URL/starfall" ]; then note "$SITE_URL/starfall.html -> $CODE to '$loc' (want /starfall)"; fi
+    # /$g.html: see html_handling where the copied wrangler.toml is checked.
+    fetch "$SITE_URL/$g.html"
+    loc=$(hdr_value location)
+    if [ "$CODE" != 307 ] && [ "$CODE" != 308 ]; then note "$SITE_URL/$g.html -> HTTP $CODE (want a 307 or 308 redirect to /$g)"
+    elif [ "$(hdr_count location)" != 1 ]; then note "$SITE_URL/$g.html -> $CODE without exactly one location header"
+    elif [ "$loc" != "/$g" ] && [ "$loc" != "$SITE_URL/$g" ]; then note "$SITE_URL/$g.html -> $CODE to '$loc' (want /$g)"; fi
+  done
 
   local f
   for f in "${SAME_BYTES[@]}"; do
@@ -250,5 +276,5 @@ until smoke_round; do
   try=$((try + 1))
   sleep "$SMOKE_WAIT"
 done
-echo "deploy-site: smoke ok: / and /starfall are the built pages, /starfall.html as html_handling $HTML_HANDLING wants, live JS matches the build, board ok with CORS for $SITE_URL"
+echo "deploy-site: smoke ok: /, /starfall and /stacklight are the built pages, /starfall.html and /stacklight.html as html_handling $HTML_HANDLING wants, live JS matches the build, board ok with CORS for $SITE_URL"
 echo "deploy-site: deployed $SHA and smoke passed"

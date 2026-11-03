@@ -4,6 +4,40 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>STARFALL · STATICADE</title>
+<meta name="description" content="Starfall is a free fixed-shooter in your browser, drawn entirely in glowing dots. Clear the waves, face the bosses, and chase a daily leaderboard.">
+<link rel="canonical" href="https://staticade.com/starfall">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Staticade">
+<meta property="og:title" content="STARFALL · STATICADE">
+<meta property="og:description" content="Starfall is a free fixed-shooter in your browser, drawn entirely in glowing dots. Clear the waves, face the bosses, and chase a daily leaderboard.">
+<meta property="og:url" content="https://staticade.com/starfall">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="STARFALL · STATICADE">
+<meta name="twitter:description" content="Starfall is a free fixed-shooter in your browser, drawn entirely in glowing dots. Clear the waves, face the bosses, and chase a daily leaderboard.">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "VideoGame",
+  "name": "Starfall",
+  "description": "Starfall is a free fixed-shooter in your browser, drawn entirely in glowing dots. Clear the waves, face the bosses, and chase a daily leaderboard.",
+  "url": "https://staticade.com/starfall",
+  "genre": "Fixed shooter",
+  "gamePlatform": "Web browser",
+  "applicationCategory": "Game",
+  "operatingSystem": "Any",
+  "isAccessibleForFree": true,
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Staticade",
+    "url": "https://staticade.com/"
+  }
+}
+</script>
 <style>
   html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none}
   canvas{display:block;width:100vw;height:100vh}
@@ -12,6 +46,11 @@
 </head>
 <body>
 <canvas id="c"></canvas>
+<noscript><div style="position:fixed;top:0;right:0;bottom:0;left:0;z-index:1;overflow:auto;box-sizing:border-box;background:#000;color:#fc6;font:16px/1.5 monospace;padding:6vh 6vw">
+<h1 style="font-size:28px;margin:0 0 8px">STARFALL</h1>
+<p>A free fixed-shooter from <a style="color:#fff" href="/">the arcade</a>, drawn entirely in glowing dots. Turn on JavaScript to play.</p>
+<p>Also in the arcade: <a style="color:#fff" href="/stacklight">Stacklight</a>, a falling-light puzzle.</p>
+</div></noscript>
 <div id="nogl">Starfall needs WebGL.</div>
 <!-- STARFALL: an original dot-rendered arcade shooter. Every sprite pixel, letter and effect is one glowing dot. -->
 <script type="module" src="games/starfall/main.js"></script>

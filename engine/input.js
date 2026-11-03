@@ -15,7 +15,7 @@ export const DEFAULT_BINDINGS = {
 const SWIPE_PX = 48, TAP_PX = 16;
 const btn = (bt, n) => bt[n] !== undefined && bt[n].pressed;
 
-export function createInput({ target = window, surface, toField, onGesture, bindings = DEFAULT_BINDINGS } = {}) {
+export function createInput({ target = window, surface, toField, onGesture, excludeStart, bindings = DEFAULT_BINDINGS } = {}) {
   const B = bindings, keys = Object.create(null);
   let pending = 0;
   let latchFire = false, latchAlt = false;
@@ -24,6 +24,12 @@ export function createInput({ target = window, surface, toField, onGesture, bind
   // touch
   let touchActive = false, touchX = 0, touchFire = false;
   let gActive = false, gMulti = false, gSwiped = false, gx0 = 0, gy0 = 0;
+  // fingers whose touchstart landed where excludeStart(clientX, clientY) is true (the touch PAUSE button) are not ours: they
+  // never steer, fire, kindle, tap or swipe. Their ids live in a fixed array (no allocation per event).
+  const MAXEX = 8, exIds = new Int32Array(MAXEX); let exN = 0;
+  const exHas = id => { for (let i = 0; i < exN; i++) if (exIds[i] === id) return true; return false; };
+  const inList = (list, id) => { for (let i = 0; i < list.length; i++) if (list[i].identifier === id) return true; return false; };
+  function exPrune(list) { for (let i = exN - 1; i >= 0; i--) if (!inList(list, exIds[i])) exIds[i] = exIds[--exN]; }
   // results of the last poll
   const api = { menu: 0, move: 0, fire: false, touchActive: false };
 
@@ -46,7 +52,7 @@ export function createInput({ target = window, surface, toField, onGesture, bind
   function onKeyUp(e) { keys[e.code] = false; }
   function releaseAll() {
     for (const k in keys) keys[k] = false;
-    touchActive = false; touchFire = false; gActive = false;
+    touchActive = false; touchFire = false; gActive = false; exN = 0;
     latchFire = latchAlt = false;
   }
   function onVis() { if (document.hidden) releaseAll(); }
@@ -55,19 +61,37 @@ export function createInput({ target = window, surface, toField, onGesture, bind
   // In menus a tap is FIRE (select) and a vertical swipe is UP/DOWN.
   function onTouch(ev) {
     ev.preventDefault(); gesture();
+    if (excludeStart) {
+      const cl = ev.changedTouches;
+      let allEx = cl.length > 0;
+      if (ev.type === 'touchstart') {
+        exPrune(ev.touches); // an id left behind by a lost touchend must not eat a later finger
+        for (let i = 0; i < cl.length; i++) {
+          if (exN < MAXEX && excludeStart(cl[i].clientX, cl[i].clientY)) exIds[exN++] = cl[i].identifier; else allEx = false;
+        }
+      } else for (let i = 0; i < cl.length; i++) if (!exHas(cl[i].identifier)) { allEx = false; break; }
+      if (!allEx) handle(ev);
+      if (exN) exPrune(ev.touches);
+    } else handle(ev);
+  }
+  function handle(ev) {
     const t = ev.touches, type = ev.type;
+    let n = 0, t0 = null; // the fingers that count: not on the excluded box
+    for (let i = 0; i < t.length; i++) if (!exHas(t[i].identifier)) { if (!t0) t0 = t[i]; n++; }
+    let c0 = null; // the first changed finger that counts
+    for (let i = 0; i < ev.changedTouches.length; i++) if (!exHas(ev.changedTouches[i].identifier)) { c0 = ev.changedTouches[i]; break; }
     if (type === 'touchstart') {
       latchFire = true;
-      if (!gActive) { gActive = true; gMulti = false; gSwiped = false; gx0 = ev.changedTouches[0].clientX; gy0 = ev.changedTouches[0].clientY; }
-      if (t.length >= 2) { latchAlt = true; gMulti = true; }
-    } else if (type === 'touchmove' && gActive && !gMulti && t.length) {
-      const dy = t[0].clientY - gy0, dx = t[0].clientX - gx0;
-      if (Math.abs(dy) >= SWIPE_PX && Math.abs(dy) > Math.abs(dx)) { pending |= dy < 0 ? M_UP : M_DOWN; gSwiped = true; gy0 = t[0].clientY; gx0 = t[0].clientX; }
+      if (!gActive && c0) { gActive = true; gMulti = false; gSwiped = false; gx0 = c0.clientX; gy0 = c0.clientY; }
+      if (n >= 2) { latchAlt = true; gMulti = true; }
+    } else if (type === 'touchmove' && gActive && !gMulti && t0) {
+      const dy = t0.clientY - gy0, dx = t0.clientX - gx0;
+      if (Math.abs(dy) >= SWIPE_PX && Math.abs(dy) > Math.abs(dx)) { pending |= dy < 0 ? M_UP : M_DOWN; gSwiped = true; gy0 = t0.clientY; gx0 = t0.clientX; }
     }
-    if (!t.length) {
+    if (!n) {
       touchActive = false; touchFire = false;
-      if (gActive && type === 'touchend' && !gMulti && !gSwiped) {
-        const c = ev.changedTouches[0], dx = c.clientX - gx0, dy = c.clientY - gy0;
+      if (gActive && type === 'touchend' && !gMulti && !gSwiped && c0) {
+        const dx = c0.clientX - gx0, dy = c0.clientY - gy0;
         if (Math.abs(dy) >= SWIPE_PX && Math.abs(dy) > Math.abs(dx)) pending |= dy < 0 ? M_UP : M_DOWN;
         else if (Math.abs(dx) < TAP_PX && Math.abs(dy) < TAP_PX) pending |= M_FIRE;
       }
@@ -75,7 +99,7 @@ export function createInput({ target = window, surface, toField, onGesture, bind
       return;
     }
     touchActive = true; touchFire = true;
-    touchX = toField ? toField(t[0].clientX, t[0].clientY) : t[0].clientX;
+    touchX = toField ? toField(t0.clientX, t0.clientY) : t0.clientX;
   }
   function onMouse() { gesture(); latchFire = true; pending |= M_FIRE; }
 

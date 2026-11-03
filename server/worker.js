@@ -5,13 +5,15 @@
 //   GET  /rank          ?game=&playerId=&version=
 //   GET  /replay/:id    a stored run, 404 if gone
 //   GET  /daily         ?game=  header x-player-id: <playerId>. Today's (UTC, server clock) Daily: { dayKey, seed, ticket,
-//                       issuedAt, dailySecret } (server/daily.js)
+//                       issuedAt, dailySecret } (server/daily.js). Any game in server/games.js (starfall,
+//                       stacklight); each game has its own seed for a day (the HMAC message names the game)
 //   POST /admin/release a held near-copy onto the board: { id }, header authorization: Bearer <ADMIN_TOKEN>
 //   POST /admin/hide    take an entry off every board: { entryId }, same header
 // Errors are { ok: false, error: <code>, message }. Success is { ok: true, ... }.
 // Field rules: leaderboard/api.js validateSubmission plus the server's own (3-letter names, no score 0). Boards,
 // players and trophies (the best-5 trophy rule in leaderboard/ranking.js) are SQL rows: server/boards.js. Boards are kept per
-// major game version; version= defaults to the version this Worker was deployed with.
+// major game version; version= defaults to the major version of that game this Worker was deployed with
+// (server/games.js; Starfall's for a game not in the registry).
 // Optional env (wrangler.toml [vars], none are secrets): ALLOWED_ORIGIN (CORS, default '*').
 // Optional secret (npx wrangler secret put ADMIN_TOKEN, never in the repo): ADMIN_TOKEN, at least 24 characters.
 // Without it /admin/release answers 404, as if it did not exist.
@@ -20,13 +22,15 @@
 // needs the ticket /daily gave, may hold no more play than real time since that ticket, and only today's or yesterday's
 // daily is taken (UTC). Without it (dev, tests) the Daily keeps the public seed and today's checks.
 import { validateSubmission, hashReplay, LeaderboardError, MAX_REPLAY_CHARS } from '../leaderboard/api.js';
-import { seasonFor } from '../leaderboard/ranking.js';
-import { claimResult, releaseResult, findNearRun, hitRate, sweepRate, holdRun, getHeld, markReleased, countHeld } from './d1-adapter.js';
+import { seasonFor, SEASON_EPOCH_MS } from '../leaderboard/ranking.js';
+import { claimResult, releaseResult, findNearRun, hitRate, sweepRate, getHeld, markReleased, countHeld,
+  claimDaily, dropDaily, sweepDaily, noteHeldFrom, expireHeld, holdRunCapped } from './d1-adapter.js';
 import { isSeen, storeRun, readBoard, readRank, readReplay, hideEntry, majorOf, boardsFor, BOARD_CAP } from './boards.js';
 import { cleanName } from './names.js';
 import { makeServerVerifier } from './verify.js';
-import { GAME_ID, GAME_VERSION } from '../games/starfall/sim.js';
-import { createDailyKeys, dailySecretOf, todayKey } from './daily.js';
+import { GAME_VERSION } from '../games/starfall/sim.js';
+import { gameOf, GAME_IDS } from './games.js';
+import { createDailyKeys, dailySecretOf, todayKey, DAILY_KEEP_MS, ticketStale, TICKET_GRACE_S } from './daily.js';
 
 // Limits and why:
 // - bodyBytes: the replay cap (MAX_REPLAY_CHARS, 864,064 chars: 60 minutes of the densest touch input, see
@@ -41,11 +45,24 @@ import { createDailyKeys, dailySecretOf, todayKey } from './daily.js';
 // - boardMaxAge 10 s: a board read may be served from a cache for up to 10 s. A new score shows within
 //   10 s, which nobody notices, and a burst of reads (the attract mode after a version bump, a busy launch evening)
 //   costs one database read per board per 10 s per edge location instead of one per request.
-// - dailyPerWindow 60 per 10 minutes per address: GET /daily is asked once per DAILY FLIGHT start (a run
-//   takes at least 53 s, so a real player asks at most about 11 times in 10 minutes). It cannot be cached (each answer
+// - dailyPerWindow 60 per 10 minutes per address: GET /daily is asked once per DAILY FLIGHT start, and up to
+//   twice per STACKLIGHT start (on highlight, and again at the start if that answer is over a minute old) (a run
+//   takes at least 53 s, so a real player asks at most about 22 times in 10 minutes). It cannot be cached (each answer
 //   is signed for one player), so a storm of it is held to 60 HMACs and 60 rate-counter writes per address.
+//   With one ranked Daily per player per day and one run per ticket, more tickets do not buy a player more ranked
+//   Dailies; this limit still bounds what a playerId-rotating script gets per address, so it stays.
+// - heldPerPlayer 3, heldPerAddress 3: near copies waiting for review per playerId and per address
+//   (IPv6: its /64). An honest player is held rarely (the bot-measured gap is honest at most 0.32, copies at least 0.97),
+//   so 3 waiting at once is already unusual; past it a near copy is refused (held_limit, 409) and not stored. One
+//   address can no longer fill the 500-slot queue: it takes 167 addresses.
+// - heldMaxAgeDays 14: a held run still waiting after 14 days is deleted (the sweep, once per rate window per
+//   Worker copy). Two weekly looks at the queue. Trade: a held run the owner has not looked at in 14 days is gone for
+//   good from the server (the player still has it on their device's local board); without it the queue only grows.
+// - ticketGraceS: seconds a Daily ticket stays good past its run's play time (server/daily.js
+//   TICKET_GRACE_S = 600 is the chosen value and why). The rule is ON: LIMITS.ticketGraceS is TICKET_GRACE_S.
+//   A test may pass limits { ticketGraceS: null } to switch it off for one Worker copy; null means no age rule.
 export const LIMITS = Object.freeze({ bodyBytes: MAX_REPLAY_CHARS + 16384, windowMs: 600000, ipPerWindow: 30, pidPerWindow: 12, heldCap: 500,
-  boardMaxAge: 10, replayMaxAge: 300, dailyPerWindow: 60 });
+  boardMaxAge: 10, replayMaxAge: 300, dailyPerWindow: 60, heldPerPlayer: 3, heldPerAddress: 3, heldMaxAgeDays: 14, ticketGraceS: TICKET_GRACE_S });
 export const BOARD_WINDOW = 100; // rows per cached board window (see board below)
 
 // the edge cache key of one board window, the one place it is built. board() reads through it and
@@ -53,6 +70,8 @@ export const BOARD_WINDOW = 100; // rows per cached board window (see board belo
 export function windowKey(origin, game, ver, board, from) {
   return `${origin}/board?game=${encodeURIComponent(game)}&version=${encodeURIComponent(ver)}&board=${encodeURIComponent(board)}&from=${from}`;
 }
+// the edge cache key of one stored run (GET /replay/:id), from the checked id only.
+export function replayKey(origin, id) { return `${origin}/replay/${id}`; }
 // Cloudflare's edge cache, or null where there is none (Node, the dev server).
 function edgeCache() {
   try { return globalThis.caches?.default ?? null; } catch { return null; }
@@ -67,6 +86,7 @@ const STATUS = {
   score_mismatch: 422, replay_mismatch: 422, replay_error: 422,
   duplicate_replay: 409, duplicate_result: 409, near_duplicate: 409,
   rate_limited: 429, busy: 503, verify_disagree: 500, bad_ticket: 422,
+  ticket_used: 409, daily_done: 409, ticket_stale: 422, held_limit: 409,
   not_found: 404, method_not_allowed: 405, unauthorized: 401, already_released: 409,
 };
 
@@ -114,15 +134,29 @@ export function ipKey(ip) {
 }
 
 const WHOLE = /^\d{1,6}$/;
+const DAY_MS = 86400000;
 const GAME_RE = /^[a-z0-9_-]{1,32}$/i;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const VERSION_RE = /^\d{1,4}(\.\d{1,4})?$/;
 const realDay = (k) => typeof k === 'string' && DAY_RE.test(k) && !Number.isNaN(Date.parse(`${k}T00:00:00Z`)) && new Date(`${k}T00:00:00Z`).toISOString().slice(0, 10) === k;
-function versionOf(q) {
+// Reads name a game in the registry (server/games.js) and a major version it can have boards for:
+// 1 up to the game's current major plus one (the next major's boards may be read for the few minutes a deploy takes,
+// README step 6b; older majors stay readable, README "Trophies and boards are per major game version"). Anything else
+// is refused before any read, so made-up games and versions cannot mint new cache keys or D1 reads.
+function readGame(q) {
+  const game = q.get('game');
+  if (game === null || !GAME_RE.test(game)) throw new LeaderboardError('bad_game', 'game required');
+  const g = gameOf(game);
+  if (!g) throw new LeaderboardError('bad_game', `this server has boards for ${GAME_IDS.join(' and ')} only`);
+  return g;
+}
+function versionOf(q, g) {
   const v = q.get('version');
-  if (v === null) return SERVER_VERSION;
+  if (v === null) return majorOf(g.version);
   if (!VERSION_RE.test(v)) throw new LeaderboardError('bad_board', 'version must look like 2 or 2.5');
-  return majorOf(v);
+  const n = Number(majorOf(v)), top = Number(majorOf(g.version)) + 1;
+  if (!(n >= 1 && n <= top)) throw new LeaderboardError('bad_version', `${g.id} has boards for major versions 1 to ${top} only`);
+  return String(n);
 }
 function entryTag(t, rhash) {
   let r;
@@ -146,7 +180,12 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
   let sweptWin = -1; // the rate window this Worker copy last swept: sweep once per window, not on every request
   async function sweep(db, t) {
     const win = Math.floor(t / L.windowMs);
-    if (win !== sweptWin) { sweptWin = win; await sweepRate(db, { windowMs: L.windowMs, t }); }
+    if (win !== sweptWin) {
+      sweptWin = win;
+      await sweepRate(db, { windowMs: L.windowMs, t });
+      await sweepDaily(db, { day: todayKey(t - DAILY_KEEP_MS) });
+      await expireHeld(db, { before: t - L.heldMaxAgeDays * 86400000 });
+    }
   }
 
   async function rateCheck(db, key, limit) {
@@ -158,7 +197,8 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
     const db = env.DB;
     await sweep(db, now());
     const ip = request.headers.get('cf-connecting-ip') || 'unknown'; // set by Cloudflare's edge; a client cannot forge it there
-    await rateCheck(db, `ip:${ipKey(ip)}`, L.ipPerWindow);
+    const ipk = ipKey(ip);
+    await rateCheck(db, `ip:${ipk}`, L.ipPerWindow);
     const text = await readCapped(request, L.bodyBytes);
     let input;
     try { input = JSON.parse(text); } catch { throw new HttpError('bad_json', 'body must be JSON'); }
@@ -173,17 +213,64 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
     if (await isSeen(db, c.game, rhash)) throw new LeaderboardError('duplicate_replay', 'this replay was already submitted');
 
     // with DAILY_SECRET a daily needs this server's ticket for its game, day and player
-    let daily;
+    let daily, dailyKey = null;
     const secret = dailySecretOf(env);
     if (secret && c.mode === 'daily' && typeof c.dayKey === 'string') {
       const issuedAt = await dailyKeys.check(secret, input.ticket, c.game, c.dayKey, c.pid);
       if (issuedAt === null) throw new LeaderboardError('bad_ticket', 'a daily run needs the ticket the server gave for that day (GET /daily)');
       if (todayKey(issuedAt) !== c.dayKey || issuedAt > now() + 60000) throw new LeaderboardError('bad_ticket', 'the ticket does not belong to that day');
+      // One accepted run per ticket, one ranked Daily per player per day, claimed after the re-sim
+      // below (claimDaily, one atomic write). Not read before it: the run's own errors (bad_seed, bad_day, ...) come
+      // first, as before, and a refused second run costs one re-sim, which the per-player and per-address limits bound.
+      dailyKey = { game: c.game, day: c.dayKey, pid: c.pid, ticket: input.ticket, rhash };
       daily = { seed: await dailyKeys.seed(secret, c.game, c.dayKey), issuedAt };
     }
     const v = verifyRun(c, daily);
     if (v.score !== c.score) throw new LeaderboardError('score_mismatch', `replay scores ${v.score}, claimed ${c.score}`);
+    // A ticket runs out its run's play time plus ticketGraceS after it was issued (server/daily.js).
+    // On by default (LIMITS.ticketGraceS = TICKET_GRACE_S); skipped only when a Worker copy is given null.
+    // Checked after the re-sim, from the server's own frame count. Starfall and STACKLIGHT Dailies both pass through it.
+    if (daily && L.ticketGraceS != null && ticketStale(daily.issuedAt, v.frames, now(), L.ticketGraceS)) {
+      throw new LeaderboardError('ticket_stale', 'this daily arrived too long after its ticket; the ticket ran out');
+    }
+    let dailyFresh = false;
+    if (dailyKey) {
+      const got = await claimDaily(db, { ...dailyKey, t: now() });
+      if (!got.ok) throw dailyRefusal(got.code);
+      dailyFresh = got.fresh;
+    }
+    try {
+      return await place(db, request, c, v, name, ipk);
+    } catch (e) {
+      // not stored and not held: give the Daily claim back (the player's one ranked Daily is not used up).
+      // Place can also throw AFTER its write committed (an answer lost on the way back, a read
+      // after the store's batch). So the claim goes back only when the run is seen to be neither on the boards nor
+      // held for this player; if that check fails too, the claim stays (a lost Daily beats a second ranked one).
+      // Never on duplicate_result. It means this exact result is already claimed, so the
+      // run exists, stored or in flight (the same Daily sent twice at once: the resend can win the result claim and
+      // not have committed yet when this submit checks, so a check here would see nothing and hand the claim back).
+      if (dailyFresh && e?.code !== 'duplicate_result') {
+        try {
+          if (!(await landed(db, c, v, rhash))) await dropDaily(db, dailyKey);
+        } catch { /* the claim stays; the player keeps daily_done */ }
+      }
+      throw e;
+    }
+  }
+  // did this checked Daily get stored (its replay is in seen) or held for this player?
+  async function landed(db, c, v, rhash) {
+    if (await isSeen(db, c.game, rhash)) return true;
+    const held = await getHeld(db, { game: c.game, board: `daily:${c.dayKey}`, hash: v.hash, score: v.score });
+    return !!held && held.pid === String(c.pid);
+  }
+  function dailyRefusal(code) {
+    return code === 'ticket_used'
+      ? new LeaderboardError('ticket_used', 'this daily ticket was already used for a run; one run per ticket')
+      : new LeaderboardError('daily_done', 'you already have a ranked daily for this day; one per player per day');
+  }
 
+  // The checked run onto the boards (201), held for review (202), or refused as a copy.
+  async function place(db, request, c, v, name, ipk) {
     const dayKey = c.mode === 'daily' ? c.dayKey : undefined;
     const claim = { game: c.game, board: dayKey ? `daily:${dayKey}` : 'free', hash: v.hash, score: v.score };
     // Duplicate checks without a lock: the exact result first (one atomic claim), then near copies of EARLIER claims
@@ -201,10 +288,24 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
     if (near) {
       await releaseResult(db, claim);
       const pct = Math.round(near.similarity * 100);
-      if ((await countHeld(db)) >= L.heldCap && !(await getHeld(db, claim))) {
-        throw new LeaderboardError('near_duplicate', `this run is a copy of one already on the board (${pct}% the same)`);
+      let id;
+      const had = await getHeld(db, claim);
+      if (had) { // the same run sent again is answered as held, whatever the caps
+        id = had.id;
+        await noteHeldFrom(db, { id, ip: ipk });
+      } else {
+        // The caps are checked inside the one atomic write that holds the run (holdRunCapped),
+        // so copies sent at the same moment cannot all slip under them.
+        const got = await holdRunCapped(db, { ...claim, t, near, sig: v.sig, run, ip: ipk,
+          caps: { total: L.heldCap, pid: L.heldPerPlayer, ip: L.heldPerAddress } });
+        if (!got) { // nothing written; which cap was full only picks the message
+          if ((await countHeld(db)) >= L.heldCap) {
+            throw new LeaderboardError('near_duplicate', `this run is a copy of one already on the board (${pct}% the same)`);
+          }
+          throw new LeaderboardError('held_limit', `this run is ${pct}% the same as a run already on the board, and too many of your runs already wait for review`);
+        }
+        id = got.id;
       }
-      const id = await holdRun(db, { ...claim, t, near, sig: v.sig, run });
       return { status: 202, body: { ok: true, held: true, code: 'held_for_review', heldId: id, score: v.score,
         message: `your run (${v.score} points) is held for review before it goes on the board: it is ${pct}% the same as a run already there` } };
     }
@@ -240,6 +341,11 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
     const keys = [];
     for (const b of boards) for (let from = 0; from < BOARD_CAP; from += BOARD_WINDOW) keys.push(windowKey(origin, game, ver, b, from));
     await Promise.all(keys.map(async (k) => { try { await cache.delete(new Request(k)); } catch { /* runs out by itself */ } }));
+  }
+  async function purgeKey(k) {
+    const cache = edgeCache();
+    if (!cache || typeof cache.delete !== 'function') return;
+    try { await cache.delete(new Request(k)); } catch { /* runs out by itself */ }
   }
 
   // the owner's release of a held near-copy: the run goes on the boards as if accepted now (trophies count from now).
@@ -283,6 +389,7 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
     if (!rows && !runs) throw new HttpError('not_found', 'no board or best-5 list has that entry');
     const origin = new URL(request.url).origin;
     for (const r of on) await purge(origin, r.game, r.ver, [r.board]);
+    await purgeKey(replayKey(origin, entry)); // the run's cached /replay too
     return { status: 200, body: { ok: true, hidden: entry, rows, runs } };
   }
 
@@ -297,22 +404,29 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
       if (!WHOLE.test(s)) throw new LeaderboardError('bad_board', `${name} must be a whole number`);
       return Number(s);
     };
-    const game = q.get('game');
-    if (game === null || !GAME_RE.test(game)) throw new LeaderboardError('bad_game', 'game required');
+    const g = readGame(q), game = g.id;
     const kind = q.get('board') ?? 'all', key = q.get('key');
     let b;
     if (kind === 'all') b = 'all';
     else if (kind === 'season') {
       if (key !== null && !/^-?\d{1,6}$/.test(key)) throw new LeaderboardError('bad_board', 'season key must be an integer season id');
-      b = `season:${key === null ? seasonFor(now()).id : Number(key)}`;
+      // Launch season (0) up to next season; a clock before launch also allows last season
+      const cur = seasonFor(now()).id, id = key === null ? cur : Number(key), lo = Math.min(0, cur - 1);
+      if (id < lo || id > cur + 1) throw new LeaderboardError('bad_board', `season key must be a season from ${lo} to ${cur + 1}`);
+      b = `season:${id}`;
     } else if (kind === 'daily') {
-      const day = key ?? new Date(now()).toISOString().slice(0, 10);
+      const today = now(), day = key ?? new Date(today).toISOString().slice(0, 10);
       if (!realDay(day)) throw new LeaderboardError('bad_board', 'daily key must be a real date, YYYY-MM-DD');
+      // Launch day (or yesterday, on a clock before launch) up to tomorrow (UTC)
+      const ms = Date.parse(`${day}T00:00:00Z`), lo = Math.min(SEASON_EPOCH_MS, Date.parse(todayKey(today - DAY_MS) + 'T00:00:00Z'));
+      if (ms < lo || ms > Date.parse(todayKey(today + DAY_MS) + 'T00:00:00Z')) {
+        throw new LeaderboardError('bad_board', `daily key must be a day from ${todayKey(lo)} to ${todayKey(today + DAY_MS)}`);
+      }
       b = `daily:${day}`;
     } else throw new LeaderboardError('bad_board', "board must be 'all', 'daily' or 'season'");
     const offset = num('offset', 0);
     const limit = Math.max(0, Math.min(100, num('limit', 10), BOARD_CAP - offset)); // nothing is kept past BOARD_CAP
-    return { game, ver: versionOf(q), b, limit, offset };
+    return { game, ver: versionOf(q, g), b, limit, offset };
   }
 
   // a board is read, and cached, in fixed windows of BOARD_WINDOW rows (ranks 1-100, 101-200, ...).
@@ -339,11 +453,10 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
 
   async function rank(url, env) {
     const q = url.searchParams;
-    const game = q.get('game'), pid = q.get('playerId');
-    if (game === null || !GAME_RE.test(game)) throw new LeaderboardError('bad_game', 'game required');
+    const g = readGame(q), pid = q.get('playerId');
     if (pid === null || !/^[A-Za-z0-9_-]{8,64}$/.test(pid)) throw new LeaderboardError('bad_player', 'playerId required');
     const season = seasonFor(now());
-    const r = await readRank(env.DB, { game, ver: versionOf(q), pid, season: season.id });
+    const r = await readRank(env.DB, { game: g.id, ver: versionOf(q, g), pid, season: season.id });
     return { status: 200, body: { ok: true, ...r, season } };
   }
 
@@ -353,7 +466,7 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
     const db = env.DB;
     const secret = dailySecretOf(env); // a too-short secret throws: no dailies at all rather than the public seed
     const game = url.searchParams.get('game');
-    if (game !== GAME_ID) throw new LeaderboardError('bad_game', `this server has a daily for ${GAME_ID} only`);
+    if (!gameOf(game)) throw new LeaderboardError('bad_game', `this server has a daily for ${GAME_IDS.join(' and ')} only`);
     const pid = request.headers.get('x-player-id');
     const pidOk = pid !== null && /^[A-Za-z0-9_-]{8,64}$/.test(pid);
     if (secret && !pidOk) throw new LeaderboardError('bad_player', 'header x-player-id required (the ticket is for one player)');
@@ -366,11 +479,17 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
     return { status: 200, body: { ok: true, game, dayKey, seed, ticket, issuedAt, dailySecret: !!secret } };
   }
 
-  async function replay(id, env) {
+  // Through the edge cache like a board window, so repeat reads of one run (up to 864 KB from D1 each)
+  // are served at the edge for replayMaxAge seconds. The key is built from the checked id only (replayKey). A missing
+  // run is a 404 and is never cached. POST /admin/hide deletes the key, so a hidden run goes at once in that data centre.
+  async function replay(url, id, env, ctx, cors) {
     if (!REPLAY_ID.test(id)) throw new HttpError('not_found', 'no such replay');
-    const r = await readReplay(env.DB, id);
-    if (!r) throw new HttpError('not_found', 'no such replay');
-    return { status: 200, body: { ok: true, ...r }, headers: { 'cache-control': `public, max-age=${L.replayMaxAge}` } };
+    const res = await cachedGet(replayKey(url.origin, id), ctx, async () => {
+      const r = await readReplay(env.DB, id);
+      if (!r) throw new HttpError('not_found', 'no such replay');
+      return json(200, { ok: true, ...r }, cors, { 'cache-control': `public, max-age=${L.replayMaxAge}` });
+    });
+    return { status: 200, body: await res.json(), headers: { 'cache-control': `public, max-age=${L.replayMaxAge}` } };
   }
 
   // board windows through the edge cache (Cloudflare's caches.default) when there is one; Node has none.
@@ -387,7 +506,13 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
     return res;
   }
 
+  let warnedOrigin = false;
   async function fetch(request, env, ctx) {
+    // No ALLOWED_ORIGIN still works (CORS '*', the dev server and tests) but says so once per Worker copy
+    if (!env?.ALLOWED_ORIGIN && !warnedOrigin) {
+      warnedOrigin = true;
+      console.warn("leaderboard server: ALLOWED_ORIGIN is not set, so CORS allows any origin ('*'). Set it in wrangler.toml [vars] for production (your site's origin).");
+    }
     const cors = { 'access-control-allow-origin': env?.ALLOWED_ORIGIN || '*', 'access-control-allow-methods': 'GET, POST, OPTIONS',
       'access-control-allow-headers': 'content-type, x-player-id', 'access-control-max-age': '86400', vary: 'origin' };
     try {
@@ -406,7 +531,7 @@ export function createWorker({ now = () => Date.now(), limits = LIMITS, maxFrame
       else if (path === '/rank') { if (m !== 'GET') throw new HttpError('method_not_allowed', 'use GET'); out = await rank(url, env); }
       else if (path === '/admin/release') { if (m !== 'POST') throw new HttpError('method_not_allowed', 'use POST'); out = await release(request, env); }
       else if (path === '/admin/hide') { if (m !== 'POST') throw new HttpError('method_not_allowed', 'use POST'); out = await hide(request, env); }
-      else if (path.startsWith('/replay/')) { if (m !== 'GET') throw new HttpError('method_not_allowed', 'use GET'); out = await replay(path.slice(8), env); }
+      else if (path.startsWith('/replay/')) { if (m !== 'GET') throw new HttpError('method_not_allowed', 'use GET'); out = await replay(url, path.slice(8), env, ctx, cors); }
       else throw new HttpError('not_found', 'no such route');
       return json(out.status, out.body, cors, out.headers);
     } catch (e) {

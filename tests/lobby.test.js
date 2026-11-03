@@ -8,7 +8,7 @@ const run = (nav, n) => { for (let i = 0; i < n; i++) nav.tick(); };
 
 test('machine list: Starfall plus two original COMING SOON machines', () => {
   assert.equal(MACHINES.length, 3);
-  assert.equal(MACHINES.filter(m => m.playable).length, 1);
+  assert.equal(MACHINES.filter(m => m.playable).length, 2);
   assert.equal(MACHINES[START_INDEX].id, 'starfall');
   const ids = new Set(MACHINES.map(m => m.id)), names = new Set(MACHINES.map(m => m.name));
   assert.equal(ids.size, 3); assert.equal(names.size, 3);

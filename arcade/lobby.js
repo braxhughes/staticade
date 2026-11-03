@@ -301,6 +301,12 @@ function drawWordmark(al) {
 // mode: 'lobby' -> 'swing' (select on Starfall: the cabinet swings shut) -> 'dolly' -> 'handoff' (loading Starfall) -> 'gone'
 let mode = 'lobby', swingT = 0, swingHold = -1, dollyT = 0, dollyHold = -1, skipFlag = false, manualHandoff = false, handoffReady = false, importStarted = false;
 let flashT = 0, flashM = -1, queued = 0, prevMove = 0, footAt = -1, bootT = 0;
+// a playable cabinet with a route here is a separate page, not the swing and dolly (those are Starfall's). Enter or a tap plays the
+// select sound, waits LEAVE_TICKS so it is heard, then goes to the page. With manualHandoff the page is not loaded: LOBBY.info().leaveTo
+// names it and LOBBY.proceed() goes (so a node or browser test can check the route without leaving the lobby).
+const ROUTES = { stacklight: 'stacklight.html?from=lobby' };
+const LEAVE_TICKS = 18;
+let leaveT = 0, leaveUrl = '', leaveReady = false;
 let latch = 0, selQ = false;
 let tapX = -1, tapY = -1, tapPending = false, swipePending = 0, startedAt = 0;
 const rx0 = new Float32Array(N), rx1 = new Float32Array(N), ry0 = new Float32Array(N), ry1 = new Float32Array(N);
@@ -318,9 +324,12 @@ function goTo(i) {
   return r;
 }
 function select() {
-  if (mode !== 'lobby' || nav.moving) return false;
+  if (mode !== 'lobby' || nav.moving || leaveT > 0) return false;
   const m = MACHINES[nav.index];
-  if (m.playable) {
+  if (m.playable && ROUTES[m.id]) {
+    sfx('menuSelect');
+    leaveT = LEAVE_TICKS; leaveUrl = new URL(ROUTES[m.id], location.href).href; leaveReady = false;
+  } else if (m.playable) {
     sfx('menuSelect');
     mode = 'swing'; swingT = 0; swingHold = -1; skipFlag = false; handoffReady = false;
   } else {
@@ -373,6 +382,13 @@ export function returnToLobby() {
   musicOn = false; onGesture(); // the lobby's own music again
 }
 
+// the lobby's end of a routed cabinet: go to its page (or, under manualHandoff, wait for LOBBY.proceed())
+function leave() {
+  leaveT = 0;
+  if (manualHandoff) { leaveReady = true; return; }
+  const u = leaveUrl; leaveUrl = ''; location.assign(u);
+}
+
 function startImport() {
   if (importStarted) return;
   importStarted = true; mode = 'handoff';
@@ -401,6 +417,11 @@ function tick() {
   if (bootT < 60) bootT++;
   if (flashT > 0) flashT--;
   revealTick();
+  if (leaveT > 0) { // a routed cabinet was selected: the lobby holds still until the select sound has played
+    selQ = false; tapPending = false; swipePending = 0; queued = 0; prevMove = move;
+    if (--leaveT === 0) leave();
+    return;
+  }
   if (mode === 'lobby') {
     if (wmT < WM_TOTAL && wmHold < 0) wmT++;
     if ((m & M_ANY) && !(m & M_MUTE)) wmSkip();
@@ -517,10 +538,13 @@ function attractStarfall(t) {
     sdot(bx, 35 - ph * 24, 0.55, .5, 1, 1, 1 - ph * 0.5);
   }
 }
+const tubeSoon = new Uint8Array(N); // which tubes drew COMING SOON on the last frame (LOBBY.tubeSoonShown, read only)
 function attractSoon(i, t, flash) {
   const m = MP[i], c0 = m.marqueeTop, c1 = m.marqueeBottom;
   const blink = 0.8 + 0.2 * Math.sin(t * 3.2);
-  if (flash <= 0) {   // the flash draws its own big COMING SOON; hide this one so they do not double up
+  // a playable cabinet's tube never says COMING SOON (STACKLIGHT is playable and uses this animation path)
+  if (flash <= 0 && !MACHINES[i].playable) {
+    tubeSoon[i] = 1;   // the flash draws its own big COMING SOON; hide this one so they do not double up
     stext('COMING', 32, 4, 1.15, c0, c1, blink, 0, t);
     stext('SOON', 32, 14.5, 1.15, c0, c1, blink, 0, t);
   }
@@ -641,7 +665,7 @@ let tgX0 = 0, tgX1 = 0, tgY0 = 0, tgY1 = 0;
 function render(al) {
   if (tgX1 === 0) { const hw = Math.max(textW(ARCADE_TAGLINE, 1), WM_MAXW) / 2 + 8; tgX0 = CX - hw; tgX1 = CX + hw; tgY0 = wmBottom - 5; tgY1 = wmBottom + 17; }
   fpsT[fpsN++ & 255] = performance.now();
-  posterDrawn.fill(0);
+  posterDrawn.fill(0); tubeSoon.fill(0);
   if (gfx.lost) return;
   if (rotate.shown()) { rotate.draw(''); return; } // rotate screen
   LIM[0] = 20 + gfx.view.padX; LIM[1] = 20 + gfx.view.padX; // the room fills the width (see the end of this function)
@@ -1038,6 +1062,7 @@ loop.start();
 function resetToLobby() {
   mode = 'lobby'; swingT = 0; swingHold = -1; dollyT = 0; dollyHold = -1; skipFlag = false; handoffReady = false; importStarted = false;
   selQ = false; queued = 0; tapPending = false; swipePending = 0; latch = 0; flashT = 0; nav.hold(null); revKey = -2;
+  leaveT = 0; leaveUrl = ''; leaveReady = false;
   const p = board.refresh();
   loop.start();
   return p;
@@ -1051,7 +1076,7 @@ window.LOBBY = {
     return {
       mode, index: nav.index, id: MACHINES[nav.index].id, ids: MACHINES.map(m => m.id), names: MACHINES.map(m => m.name),
       moving: nav.moving, pos: +nav.pos(0).toFixed(3), cam: Array.from(cam), crt: ui.crtOn, flash: flashT, dolly: +(dollyT / DOLLY_TICKS).toFixed(3),
-      muted: ui.muted, music: musicOn, fps: fps(), handoffReady, stepTicks: STEP_TICKS, sceneDots: sN, sceneMax: S_MAX,
+      muted: ui.muted, music: musicOn, fps: fps(), handoffReady, leaveTo: leaveUrl, leaveWait: leaveT, leaveReady, stepTicks: STEP_TICKS, sceneDots: sN, sceneMax: S_MAX,
       // the selected cabinet's angle in degrees (72 swung open, 0 flush), the swing's progress 0..1
       angle: +(cabAngle(nav.index, 0) * 180 / Math.PI).toFixed(2), swing: mode === 'lobby' ? 0 : +clamp((swingHold >= 0 ? swingHold * SWING_TICKS : swingT) / SWING_TICKS, 0, 1).toFixed(3)
     };
@@ -1066,6 +1091,7 @@ window.LOBBY = {
   },
   // the ids of the machines whose COMING SOON poster the last frame drew (read only)
   posterShown() { const out = []; for (let i = 0; i < N; i++) if (posterDrawn[i]) out.push(MACHINES[i].id); return out; },
+  tubeSoonShown() { const out = []; for (let i = 0; i < N; i++) if (tubeSoon[i]) out.push(MACHINES[i].id); return out; },
   refreshBoard() { return board.refresh().then(() => board.snapshot()); },
   // freeze the Enter swing at q (0..1) on Starfall (starts it if needed); swingAt(null) lets it run
   swingAt(q) {
@@ -1101,7 +1127,7 @@ window.LOBBY = {
   },
   // stop at the last lobby frame instead of loading Starfall, until proceed()
   manualHandoff(v = true) { manualHandoff = !!v; },
-  proceed() { startImport(); },
+  proceed() { if (leaveReady && leaveUrl) { const u = leaveUrl; leaveUrl = ''; location.assign(u); } else startImport(); },
   returnToLobby,
   rotateShown() { return rotate.shown(); }, // the turn-sideways screen is up (touch device held upright); read only
   fillX() { return +gfx.view.padX.toFixed(2); }, // field units shown past each side of the 400 x 300 field (0 at 4:3)

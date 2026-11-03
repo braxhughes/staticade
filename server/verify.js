@@ -1,22 +1,28 @@
-// Server-side replay check for Starfall. The server trusts nothing the client says about a run: it re-simulates
-// the replay on the same sim the game ships and keeps what the sim says.
+// Server-side replay check for every game in server/games.js (Starfall, STACKLIGHT). The server trusts nothing the
+// client says about a run: it re-simulates the replay on the same sim the game ships and keeps what the sim says.
+// The game is picked by the run's game id (card T6); an id not in the registry is bad_game.
 //
 // Order (cheap checks first, so a bad claim never costs a full re-sim):
-//   1. header: format r1, game, GAME_VERSION (current only), mode, seed, daily day and window (with
+//   1. header: format r1, game (claimed and in the replay, the same registry entry), that game's GAME_VERSION
+//      (current only), mode (the game's own mode list), seed, daily day and window (with
 //      DAILY_SECRET, the server's seed for that day, today or yesterday only, and no more frames than real time
 //      since the run's ticket)
 //   2. frame count, read from the run lengths without building the frame array (replay_too_long)
 //   3. canonical encoding (one run, one string)
-//   4. pass A, our own loop on createSim: no frames after the run ended, the run must be finished (game over),
-//      and it gives the final score, state hash, stage and the run's signature (server/dedupe.js, near copies)
-//   5. pass B, games/starfall/modes.js makeVerifyReplay, the strict verifier the game itself wires in: it must
-//      agree with pass A. Defence in depth; it roughly doubles CPU for an honest run (see server/README.md).
+//   4. pass A, our own loop on the game's createSim: no frames after the run ended, no input word with a bit outside
+//      the game's inputMask (STACKLIGHT: bits 7 to 15, bad_replay), the run must be finished (game over), and it gives
+//      the final score, state hash, stage (STACKLIGHT: level) and the run's signature (server/dedupe.js), each
+//      scoring event recorded by the game's sigKey and sigValue (Starfall: frame and points; STACKLIGHT: piece and
+//      where it locked)
+//   5. pass B, the game's makeVerifyReplay (Starfall: games/starfall/modes.js, the strict verifier the game itself
+//      wires in; STACKLIGHT: server/games.js until the game has its own): it must agree with pass A. Defence in depth;
+//      it roughly doubles CPU for an honest run (see server/README.md).
 // Failures throw LeaderboardError with a code. Returns { score, hash, frames, stage, sig }.
 import { LeaderboardError } from '../leaderboard/api.js';
 import { decode, encode, b64urlDecode, REPLAY_FORMAT } from '../engine/replay.js';
 import { dailySeed } from '../engine/rng.js';
-import { createSim, GAME_ID, GAME_VERSION } from '../games/starfall/sim.js';
-import { makeVerifyReplay, todayUTC } from '../games/starfall/modes.js';
+import { todayUTC } from '../games/starfall/modes.js';
+import { GAMES } from './games.js';
 import { signatureRecorder } from './dedupe.js';
 import { maxFramesSince } from './daily.js';
 
@@ -26,7 +32,6 @@ import { maxFramesSince } from './daily.js';
 import { MAX_RUN_FRAMES } from '../leaderboard/api.js';
 export { MAX_RUN_FRAMES };
 const DAY_MS = 86400000;
-const MODE_HEADER = { daily: 'daily', free: 'arcade' }; // claimed mode -> replay header mode (as in modes.js)
 const fail = (code, msg) => { throw new LeaderboardError(code, msg); };
 
 // Sum of run lengths, stopping as soon as it passes `cap`. Same varint rules as engine/replay.js decode().
@@ -49,8 +54,12 @@ export function countFrames(body, cap) {
   return frames;
 }
 
-export function makeServerVerifier({ now = Date.now, maxFrames = MAX_RUN_FRAMES } = {}) {
-  const strict = makeVerifyReplay({ now });
+// games: the registry (server/games.js GAMES); tests may pass their own to make pass A and pass B disagree.
+export function makeServerVerifier({ now = Date.now, maxFrames = MAX_RUN_FRAMES, games = GAMES } = {}) {
+  const ids = Object.keys(games);
+  const gameOf = (id) => (typeof id === 'string' && Object.hasOwn(games, id) ? games[id] : null);
+  const strict = {}; // game id -> pass B verifier on the public daily seed, made once per game
+  for (const id of ids) strict[id] = games[id].makeVerifyReplay({ now });
   // c: the cleaned fields from validateSubmission (leaderboard/api.js).
   // daily: { seed, issuedAt } when DAILY_SECRET is set and the run's ticket checked out (server/worker.js);
   // undefined without a secret, which keeps the public seed and the plus-or-minus 1 day window exactly as before.
@@ -58,12 +67,14 @@ export function makeServerVerifier({ now = Date.now, maxFrames = MAX_RUN_FRAMES 
     const parts = c.replay.split('~');
     if (parts.length !== 6 || parts[0] !== REPLAY_FORMAT) fail('bad_replay', `not an ${REPLAY_FORMAT} replay`);
     const [, rGame, rVersion, seed36, rMode, body] = parts;
-    if (c.game !== GAME_ID || rGame !== GAME_ID) fail('bad_game', `this server checks ${GAME_ID} runs only`);
+    const g = gameOf(c.game);
+    if (!g || rGame !== g.id) fail('bad_game', `this server checks ${ids.join(' and ')} runs only, and the replay must be for the claimed game`);
+    const GAME_ID = g.id, GAME_VERSION = g.version;
     if (rVersion !== GAME_VERSION || String(c.version) !== GAME_VERSION) {
       // the client shows this as "new version, reload" (a page left open across a deploy runs the old game).
       fail('wrong_version', `new version, reload: the server takes ${GAME_ID} ${GAME_VERSION}, this run is ${rVersion} (claimed ${c.version})`);
     }
-    if (MODE_HEADER[c.mode] !== rMode) fail('bad_mode', `claimed mode ${c.mode} does not match the replay (${rMode})`);
+    if (!Object.hasOwn(g.modeHeader, c.mode) || g.modeHeader[c.mode] !== rMode) fail('bad_mode', `claimed mode ${c.mode} does not match the replay (${rMode})`);
     if (!/^[0-9a-z]{1,7}$/.test(seed36) || typeof c.seed !== 'number' || parseInt(seed36, 36) !== c.seed) fail('bad_seed', 'claimed seed does not match the replay');
     if (c.mode === 'daily') {
       if (typeof c.dayKey !== 'string') fail('bad_day', 'a daily run needs its dayKey');
@@ -91,20 +102,25 @@ export function makeServerVerifier({ now = Date.now, maxFrames = MAX_RUN_FRAMES 
     if (encode(h, h.words) !== c.replay) fail('bad_replay', 'replay is not in canonical form');
 
     // pass A
-    const sim = createSim({ seed: h.seed, mode: h.mode });
+    const sim = g.createSim({ seed: h.seed, mode: h.mode });
     const rec = signatureRecorder();
-    const w = h.words;
+    // the signature (games.js): Starfall [frame, points]; STACKLIGHT [piece, where it locked]
+    const w = h.words, mask = g.inputMask, sigKey = g.sigKey, sigValue = g.sigValue == null ? null : g.sigValue;
+    // STACKLIGHT: each placement in canonical left-right form (server/games.js makeStacklightCanon); made once
+    // per run, then a few integer compares per frame and a board symmetry test on lock frames only
+    const canon = g.sigCanon == null ? null : g.sigCanon(sim);
     for (let i = 0; i < w.length; i++) {
       if (sim.done) fail('frames_after_end', `replay carries ${w.length - i} frames after the run ended`);
+      if (mask !== null && (w[i] & ~mask) !== 0) fail('bad_replay', `input word at frame ${i} sets a reserved bit`);
       const before = sim.score;
       sim.step(w[i]); sim.clearEvents();
-      rec.add(sim.frame, before, sim.score);
+      rec.add(sigKey(sim), before, sim.score, sigValue === null ? undefined : canon === null ? sigValue(sim) : canon(sim, sigValue(sim)));
     }
     if (!sim.done) fail('run_not_finished', 'replay stops before the run is over (game over)');
-    const out = { score: sim.score, hash: sim.stateHash(), frames: sim.frame, stage: sim.stage, sig: rec.sig };
+    const out = { score: sim.score, hash: g.hashOf(sim), frames: sim.frame, stage: g.stageOf(sim), sig: rec.sig };
 
     // pass B
-    const s2 = (daily ? makeVerifyReplay({ now, dailySeedOf: () => daily.seed }) : strict)({ game: c.game, replay: c.replay, seed: c.seed, mode: c.mode, dayKey: c.dayKey, version: c.version });
+    const s2 = (daily ? g.makeVerifyReplay({ now, dailySeedOf: () => daily.seed }) : strict[g.id])({ game: c.game, replay: c.replay, seed: c.seed, mode: c.mode, dayKey: c.dayKey, version: c.version });
     if (s2 !== out.score) fail('verify_disagree', 'the game verifier and the server re-sim disagree');
     return out;
   };

@@ -75,7 +75,11 @@ export async function claimResult(db, { game, board, hash, score, t, sig = null,
 // later claim always sees the earlier one (it was inserted first) and is held; the earlier one never waits on the
 // later. So at most one of them goes on the board, as with the old per-board lock.
 export const nearLockName = (game, board) => `results:${game}:${board}`; // kept for callers of the old lock name
-export async function findNearRun(db, { game, board, hash, score, sig, t, staleMs = 60000, limit = 50 }) {
+// The 50 each side by score could be filled with planted runs so the copied original sat outside them.
+// So the board's top K runs (by score, whatever their distance) are compared too: a copy of a top-K run is found however
+// many runs sit between them. Worst case per submit: 1 + 50 + 50 + K = 121 rows read (K = 20), each with its sig.
+export const NEAR_TOP_K = 20;
+export async function findNearRun(db, { game, board, hash, score, sig, t, staleMs = 60000, limit = 50, topK = NEAR_TOP_K }) {
   if ((sig.length >> 1) < MIN_EVENTS) return null;
   const mine = await db.prepare('SELECT seq FROM results WHERE game = ? AND board = ? AND hash = ? AND score = ?').bind(game, board, String(hash), score).first('seq');
   const seq = mine == null ? Number.MAX_SAFE_INTEGER : mine; // no claim of its own: compare with every claim
@@ -84,8 +88,10 @@ export async function findNearRun(db, { game, board, hash, score, sig, t, staleM
     .bind(game, board, score, score * 2, String(hash), t - staleMs, seq, limit).all();
   const down = await db.prepare(`SELECT entry, score, sig FROM results WHERE game = ? AND board = ? AND score < ? AND score >= ? AND sig IS NOT NULL AND ${live} ORDER BY score DESC LIMIT ?`)
     .bind(game, board, score, Math.floor(score / 2), String(hash), t - staleMs, seq, limit).all();
+  const top = await db.prepare(`SELECT entry, score, sig FROM results WHERE game = ? AND board = ? AND sig IS NOT NULL AND ${live} ORDER BY score DESC LIMIT ?`)
+    .bind(game, board, String(hash), t - staleMs, seq, topK).all();
   let best = null;
-  for (const row of [...up.results, ...down.results]) {
+  for (const row of [...up.results, ...down.results, ...top.results]) {
     let other; try { other = JSON.parse(row.sig); } catch { continue; }
     if (!Array.isArray(other)) continue;
     const s = similarity(sig, other);
@@ -136,4 +142,106 @@ export async function hitRate(db, key, { limit, windowMs, t }) {
 // window per Worker copy, not on every request (index rate_win keeps it cheap).
 export async function sweepRate(db, { windowMs, t }) {
   await db.prepare('DELETE FROM rate WHERE win < ?').bind(Math.floor(t / windowMs) - 1).run();
+}
+
+// One ranked Daily per player per day per game, one accepted run per ticket. The record is one kv row,
+// key dailyrun:<day>:<game>:<pid>, value JSON { ticket, rhash, t }. One key covers both rules: a ticket is signed for
+// exactly one game, day and player (server/daily.js), so it can only ever be used under its own key; a second run under
+// that key with the same ticket is ticket_used, with another ticket daily_done. rhash (the replay's hash) tells the
+// same run sent again (an answer lost on the way back) from a second run.
+// claimDaily: the atomic claim, after the run checked out: one INSERT OR IGNORE on the key, so of two submits racing
+// with the same ticket or player exactly one writes the row. Returns { ok: true, fresh: true } when this submit wrote
+// it, { ok: true, fresh: false } when the row is this same run, else { ok: false, code: 'ticket_used' | 'daily_done' }.
+const dailyRunKey = ({ game, day, pid }) => `dailyrun:${day}:${game}:${pid}`;
+function dailyVerdict(raw, { ticket, rhash }) {
+  let row = null; try { row = JSON.parse(raw); } catch { /* unreadable: treat as another run */ }
+  if (row && row.ticket === ticket && row.rhash === rhash) return { ok: true, fresh: false };
+  if (row && row.ticket === ticket) return { ok: false, code: 'ticket_used' };
+  return { ok: false, code: 'daily_done' };
+}
+export async function claimDaily(db, k) {
+  const key = dailyRunKey(k);
+  for (let i = 0; i < 2; i++) {
+    const r = await db.prepare('INSERT OR IGNORE INTO kv (k, v) VALUES (?, ?)').bind(key, JSON.stringify({ ticket: k.ticket, rhash: k.rhash, t: k.t })).run();
+    if (r.meta.changes === 1) return { ok: true, fresh: true };
+    const raw = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(key).first('v');
+    if (raw != null) return dailyVerdict(raw, k);
+    // the row that refused us was given back in between (that submit failed later): try once more
+  }
+  return { ok: false, code: 'daily_done' };
+}
+// Give a claim back when the run was not stored after all (duplicate_result, a cap, a failed write). Only our own row.
+export async function dropDaily(db, k) {
+  await db.prepare("DELETE FROM kv WHERE k = ? AND json_extract(v, '$.ticket') = ? AND json_extract(v, '$.rhash') = ?")
+    .bind(dailyRunKey(k), k.ticket, k.rhash).run();
+}
+// Rows of days before `day` (YYYY-MM-DD) go. Keys sort by day (fixed width), so this is one range of the primary key.
+export async function sweepDaily(db, { day }) {
+  await db.prepare("DELETE FROM kv WHERE k >= 'dailyrun:' AND k < ?").bind(`dailyrun:${day}`).run();
+}
+
+// Held runs still waiting, per player (index flagged_pid) and per address (kv rows
+// heldip:<address>:<id>, value '<id>'; one primary-key range per address: ids are digits, ';' sorts right after ':'
+// and after every digit, so the range holds exactly this address's rows). A player or address at the cap is refused
+// before its run is held, so neither count passes the cap.
+const heldPrefix = (ip) => `heldip:${ip}:`;
+export async function countHeldBy(db, { pid, ip }) {
+  const byPid = await db.prepare("SELECT COUNT(*) AS n FROM flagged WHERE pid = ? AND status = 'flagged'").bind(String(pid)).first('n');
+  const p = heldPrefix(ip);
+  const byIp = await db.prepare("SELECT COUNT(*) AS n FROM kv JOIN flagged AS f ON f.id = CAST(kv.v AS INTEGER) WHERE kv.k >= ? AND kv.k < ? AND f.status = 'flagged'")
+    .bind(p, p.slice(0, -1) + ';').first('n');
+  return { pid: byPid ?? 0, ip: byIp ?? 0 };
+}
+// Hold a near copy only if every cap still has room, as ONE atomic write. The old way read the
+// counts, then inserted: 5 copies sent at once all read "2 waiting" and all got in. Here the caps are checked inside
+// the INSERT itself (INSERT ... SELECT ... WHERE count < cap), and the address row is written in the same db.batch,
+// which D1 runs as one transaction (one SQL transaction on the database's single writer; the local node:sqlite shim
+// runs it as BEGIN ... COMMIT with no await in between). So the next hold, from any Worker copy, sees both rows.
+// Caps (only runs still waiting count, so a released or expired run frees its slot): `total` over every game,
+// `pid` per playerId and `ip` per address, both over every game and day. Returns { id, fresh: true } when this call
+// held the run, { id, fresh: false } when the same run (game, board, hash, score) was already held, or null when a cap
+// is full (nothing written).
+export const HOLD_SQL = 'INSERT INTO flagged (game, board, hash, score, t, status, pid, name, near_entry, near_score, similarity, sig, run) ' +
+  "SELECT ?, ?, ?, ?, ?, 'flagged', ?, ?, ?, ?, ?, ?, ? " +
+  "WHERE (SELECT COUNT(*) FROM flagged WHERE status = 'flagged') < ? " +
+  "AND (SELECT COUNT(*) FROM flagged WHERE pid = ? AND status = 'flagged') < ? " +
+  "AND (SELECT COUNT(*) FROM kv JOIN flagged AS f ON f.id = CAST(kv.v AS INTEGER) WHERE kv.k >= ? AND kv.k < ? AND f.status = 'flagged') < ? " +
+  'ON CONFLICT(game, board, hash, score) DO NOTHING';
+// the address row of the run just held: only for a waiting row with no address row yet (same rule as noteHeldFrom)
+const NOTE_SQL = "INSERT OR IGNORE INTO kv (k, v) SELECT ? || f.id, CAST(f.id AS TEXT) FROM flagged AS f WHERE f.game = ? AND f.board = ? AND f.hash = ? AND f.score = ? AND f.status = 'flagged' " +
+  "AND NOT EXISTS (SELECT 1 FROM kv AS o WHERE o.k >= 'heldip:' AND o.k < 'heldip;' AND o.v = CAST(f.id AS TEXT))";
+export async function holdRunCapped(db, { game, board, hash, score, t, near, sig, run, ip, caps }) {
+  const p = heldPrefix(ip), h = String(hash), pid = String(run.playerId);
+  const [ins] = await db.batch([
+    db.prepare(HOLD_SQL).bind(game, board, h, score, t, pid, String(run.name ?? ''), near.entry ?? null, near.score,
+      near.similarity, JSON.stringify(sig), JSON.stringify(run), caps.total, pid, caps.pid, p, p.slice(0, -1) + ';', caps.ip),
+    db.prepare(NOTE_SQL).bind(p, game, board, h, score),
+  ]);
+  const id = await db.prepare('SELECT id FROM flagged WHERE game = ? AND board = ? AND hash = ? AND score = ?').bind(game, board, h, score).first('id');
+  if (id == null) return null;
+  return { id, fresh: Number(ins?.meta?.changes) === 1 };
+}
+// Record the address a held run came from (once per held run; the same run sent again keeps its first address).
+export async function noteHeldFrom(db, { id, ip }) {
+  if (!Number.isSafeInteger(id)) return;
+  const owned = await db.prepare("SELECT COUNT(*) AS n FROM kv WHERE k >= 'heldip:' AND k < 'heldip;' AND v = ?").bind(String(id)).first('n');
+  if (!owned) await db.prepare('INSERT OR IGNORE INTO kv (k, v) VALUES (?, ?)').bind(heldPrefix(ip) + id, String(id)).run();
+}
+// Held runs still waiting that were held before `before` (ms) are deleted, then every address row whose run is no
+// longer waiting (expired, or released by the owner). Released runs stay in flagged (a record of what went on the
+// boards). Returns how many held runs went.
+// Both deletes in ONE db.batch (one transaction). flagged.id has no AUTOINCREMENT, so a
+// deleted newest id is given to the next held run; with two separate statements a hold landing between them got the
+// expired run's id, its address row was refused (the stale heldip:<old address>:<id> row still pointed at that id),
+// and the stale row was never cleaned. In one transaction no hold can land between them.
+// One read first: when no waiting run is past the age and no address row is orphaned (the usual case), nothing is
+// written (no batch, no write cost). Safe to skip: with nothing to delete there is nothing a hold could race with.
+const ORPHAN_IP = "SELECT 1 FROM kv WHERE k >= 'heldip:' AND k < 'heldip;' AND NOT EXISTS (SELECT 1 FROM flagged AS f WHERE f.id = CAST(kv.v AS INTEGER) AND f.status = 'flagged')";
+const EXPIRE_SQL = ["DELETE FROM flagged WHERE status = 'flagged' AND t < ?",
+  "DELETE FROM kv WHERE k >= 'heldip:' AND k < 'heldip;' AND NOT EXISTS (SELECT 1 FROM flagged AS f WHERE f.id = CAST(kv.v AS INTEGER) AND f.status = 'flagged')"];
+export async function expireHeld(db, { before }) {
+  const work = await db.prepare(`SELECT (EXISTS (SELECT 1 FROM flagged WHERE status = 'flagged' AND t < ?) OR EXISTS (${ORPHAN_IP})) AS n`).bind(before).first('n');
+  if (!work) return 0;
+  const [r] = await db.batch([db.prepare(EXPIRE_SQL[0]).bind(before), db.prepare(EXPIRE_SQL[1])]);
+  return Number(r?.meta?.changes ?? 0);
 }

@@ -1,5 +1,5 @@
 // The arcade floor's machine list, left to right: only the games we plan to make.
-// Starfall is the only playable cabinet; the rest are lit COMING SOON machines for original games in classic genres.
+// STACKLIGHT and Starfall are the playable cabinets; the rest are lit COMING SOON machines for original games in classic genres.
 // Names and palettes are our own. `attract` picks the idle animation drawn on the tube.
 import { COL } from '../games/starfall/sprites.js';
 
@@ -9,7 +9,7 @@ export const PLATFORM_RACE_NAME = 'LEDGE LORDS';   // the owner's pick
 export const MACHINES = [
   {
     // STACKLIGHT twist: the falling pieces are beams of light (a bar of 3 or a plus of 5 cells) that melt into the stack; never 4-cell pieces.
-    id: 'stacklight', name: 'STACKLIGHT', genre: 'FALLING BLOCK PUZZLE', sub: 'BLOCK PUZZLE', playable: false, attract: 'blocks',
+    id: 'stacklight', name: 'STACKLIGHT', genre: 'FALLING BLOCK PUZZLE', sub: 'BLOCK PUZZLE', playable: true, attract: 'blocks',
     glow: [.3, 1, .6],
     palette: {
       edge: [.3, 1, .55], body: [.1, .5, .3], dark: [.06, .26, .17], steel: [.65, .8, .72],

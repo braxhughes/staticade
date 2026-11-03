@@ -19,13 +19,31 @@ test('brand: name and tagline are drawable in the dot font', () => {
   }
 });
 
-// the only name mentions allowed outside brand.js are these two static <title> lines, matched as whole lines.
+// The only name mentions allowed outside brand.js are the static <title> lines (matched as whole lines) and, for the
+// 3 pages, the search head tags between <head> and </head> that the owner approved for search engines. Each allowed head
+// line must match one strict whole-line pattern: <title>, <meta name|property content>, <link rel="canonical">, and the
+// application/ld+json block (its own opening and closing lines, no "<" inside). Anything glued onto an allowed line, and
+// the name anywhere else (style, other scripts, the body), still fails.
 const TITLE_LINES = { 'index.html': `<title>${ARCADE_NAME}</title>`, 'starfall.html': `<title>STARFALL \u00b7 ${ARCADE_NAME}</title>` };
+const SEARCH_PAGES = ['index.html', 'starfall.html', 'stacklight.html'];
+const HEAD_TAG_LINE = [
+  /^<title>[^<>]*<\/title>$/,
+  /^<meta (name|property)="[a-z:_]+" content="[^"<>]*">$/,
+  /^<link rel="canonical" href="[^"<>]*">$/
+];
 const withoutTitleLine = (rel, text) => {
-  const want = TITLE_LINES[rel]; if (!want) return text;
-  const lines = text.split('\n'), i = lines.findIndex(l => l === want);
-  if (i >= 0) lines.splice(i, 1);
-  return lines.join('\n');
+  const want = TITLE_LINES[rel];
+  if (want) {
+    const lines = text.split('\n'), i = lines.findIndex(l => l === want);
+    if (i >= 0) { lines.splice(i, 1); text = lines.join('\n'); }
+  }
+  if (!SEARCH_PAGES.includes(rel)) return text;
+  const a = text.indexOf('<head>'), b = text.indexOf('</head>');
+  if (a < 0 || b < a) return text;
+  const head = text.slice(a, b)
+    .replace(/^<script type="application\/ld\+json">\n[^<]*\n<\/script>$/gm, '')
+    .split('\n').filter(l => !HEAD_TAG_LINE.some(re => re.test(l))).join('\n');
+  return text.slice(0, a) + head + text.slice(b);
 };
 
 test('the arcade name string appears in no source file except arcade/brand.js', () => {

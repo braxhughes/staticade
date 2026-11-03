@@ -3,10 +3,21 @@
 // The queue lives in localStorage, so a run that could not be sent (offline, server down, busy, rate limited, no
 // answer) is sent again later: on load, after the next run, when the browser comes back online, and on a backoff timer.
 //
-// Stored value at QUEUE_KEY: { v: QUEUE_V, items: [{ id, body, tries, next, code }] }, oldest first.
+// Stored value at QUEUE_KEY: { v: QUEUE_V, items: [{ id, body, tries, next, code, deadline? }] }, oldest first.
 //   id    hashReplay(body.replay): one queue entry per run
 //   body  the exact JSON body for POST /submit
 //   tries sends started so far; next = earliest time (ms) to try again; code = the last retryable error code
+//   deadline (Daily with a ticket only) the client time (ms) when the server's ticket window closes, less a margin.
+//     A Daily's retries never skip over it: if the normal backoff would land past it, the try happens at the deadline,
+//     so the last try lands inside the window. Free Play and old entries have none and keep the plain backoff.
+//     if the try at the deadline fails, an extra try follows at deadline + DEADLINE_MARGIN_MS / 2 (15 s before the
+//     client's estimate of the window end), so a server that comes back in that last stretch still gets the run. After
+//     the extra try the plain backoff is back. No stored field: it is worked out from the time the failed try was SENT
+//     and the time its answer came back (see afterFail), so a deadline try that hangs until the client gives up
+//     (REMOTE_TIMEOUT_MS, 15 s) still gets its extra try.
+//     Still lost: a server back after the extra try (about the last 14 s of the window); timers that fire late (a hidden
+//     tab); and the extra try is inside the server's window only while the ticket's and the send's travel times
+//     add up to less than 15 s (when they do not, that try gets ticket_stale, which the next try would have got anyway).
 // A value with another `v`, unreadable JSON, or an entry that is not a well-formed body for this game version is
 // dropped on read (the run is still on the local board). At most QUEUE_CAP entries: past it the oldest goes.
 //
@@ -18,6 +29,7 @@
 // No DOM, no timers: main.js owns scheduling; storage, clock, locks and the remote client are injected (Node tests).
 import { hashReplay, LeaderboardError } from '../../leaderboard/api.js';
 import { isPlayerId } from '../../leaderboard/storage.js';
+import { TICKET_GRACE_S, TICKET_SLACK_S, FPS } from '../../leaderboard/ticket-window.js'; // one source for the 600 and the 10 (the server reads the same file)
 
 export const QUEUE_KEY = 'starfall.sendq';
 export const QUEUE_V = 1;
@@ -55,6 +67,49 @@ export function backoffMs(tries, code) {
   return code === 'rate_limited' ? Math.max(RATE_WAIT_MS, d) : d;
 }
 
+// the safety margin taken off the server's ticket window. The client times the window from the moment the ticket
+// ARRIVED, which is after the server issued it (by the request's travel time, a few seconds at most, the client times
+// out sooner), so the client's window ends LATER than the server's by that much; the margin (and the travel time of the
+// last try itself) must cover it. Both ends are read on the client clock, so a client clock that is off the server's
+// by a fixed amount does not matter, only drift over ten minutes does (milliseconds).
+export const DEADLINE_MARGIN_MS = 30000;
+// the one extra try after the deadline goes at deadline + half the margin. Half is safe while the ticket's travel time
+// plus the extra try's own travel time stay under 15 s (normally a few seconds; the client gives up on a request after
+// 15 s, so a slow ticket can use it all). Past that the extra try gets ticket_stale: no worse than not making it.
+export const EXTRA_TRY_MS = DEADLINE_MARGIN_MS / 2;
+// client time (ms) when a Daily whose ticket arrived at ticketAt (ms) and whose run lasted `frames` frames must have
+// been tried for the last time: ticket + play time + grace + slack - margin. null when either input is not usable.
+export function dailyDeadline(ticketAt, frames) {
+  if (!Number.isFinite(ticketAt) || !Number.isFinite(frames) || frames < 0) return null;
+  return ticketAt + (frames / FPS + TICKET_GRACE_S + TICKET_SLACK_S) * 1000 - DEADLINE_MARGIN_MS;
+}
+// when to try an entry again, `t` = now. Without a deadline: the plain backoff. With one still ahead: the plain backoff,
+// but never later than the deadline. From the deadline on, until the extra try time (deadline + EXTRA_TRY_MS): the plain
+// backoff, but never later than the extra try (once t has reached it this rule no longer applies; a short backoff
+// can fit more than one try in those 15 s). After that: the plain backoff again (the next answer decides,
+// ticket_stale included).
+export function nextTry(t, tries, code, deadline) {
+  const n = t + backoffMs(tries, code);
+  if (!Number.isFinite(deadline)) return n;
+  if (t < deadline) return n > deadline ? deadline : n;
+  const extra = deadline + EXTRA_TRY_MS;
+  return t < extra && n > extra ? extra : n;
+}
+// When to try again after a retryable answer to a try SENT at `sent` that came back at `t`.
+// Normally nextTry(t, ...). But a try sent from the deadline on, before the extra try time, has earned the extra try
+// whatever the answer was and however long it took: if the answer came back at or after the extra try time (the client
+// timed out after REMOTE_TIMEOUT_MS = 15 s, or a slow refusal), the extra try is due at once, `t` (main.js waits at least
+// 1 s). It is still made only once: that try is sent at or after the extra try time, so its own failure gets the plain
+// backoff. If the answer comes back late (a request sent at deadline + 14 s that hangs 15 s returns at deadline + 29 s),
+// the extra try may land after the server's window: it then gets ticket_stale and the entry is dropped, which is what the
+// plain backoff would have led to as well. Tries sent before the deadline, Free Play and no-deadline entries: unchanged.
+export function afterFail(sent, t, tries, code, deadline) {
+  const n = nextTry(t, tries, code, deadline);
+  if (!Number.isFinite(deadline) || !(sent >= deadline)) return n;
+  const extra = deadline + EXTRA_TRY_MS;
+  return sent < extra && t >= extra ? t : n;
+}
+
 function validBody(b, version) {
   return !!b && typeof b === 'object' && typeof b.game === 'string' && isPlayerId(b.playerId) && typeof b.name === 'string' &&
     Number.isSafeInteger(b.score) && b.score > 0 && typeof b.replay === 'string' && b.replay.length > 0 &&
@@ -70,8 +125,10 @@ function cleanItems(raw, version) {
     const id = hashReplay(e.body.replay);
     if (seen.has(id)) continue;
     seen.add(id);
-    out.push({ id, body: e.body, tries: Number.isInteger(e.tries) && e.tries >= 0 ? e.tries : 0,
-      next: Number.isFinite(e.next) ? e.next : 0, code: typeof e.code === 'string' ? e.code : null });
+    const item = { id, body: e.body, tries: Number.isInteger(e.tries) && e.tries >= 0 ? e.tries : 0,
+      next: Number.isFinite(e.next) ? e.next : 0, code: typeof e.code === 'string' ? e.code : null };
+    if (typeof e.deadline === 'number' && Number.isFinite(e.deadline)) item.deadline = e.deadline; // anything else is read as no deadline
+    out.push(item);
   }
   return out;
 }
@@ -156,13 +213,18 @@ export function createSubmitQueue({ remote, backend, now = () => Date.now(), loc
     get length() { return load().length; },
     // earliest time a waiting entry may be sent (Infinity when the queue is empty)
     nextDue() { let t = Infinity; for (const e of load()) if (e.next < t) t = e.next; return t; },
-    // add one run (the exact submit body); the same replay is never queued twice
-    add(body) {
+    // an entry may be sent now (main.js flushes at once when the page is visible again: a hidden tab's timer may fire late)
+    due() { return Q.nextDue() <= now(); },
+    // add one run (the exact submit body); the same replay is never queued twice.
+    // opts.ticketAt = the client time (ms) the Daily's ticket arrived, opts.frames = the run's frame count (default
+    // body.stats.frames). A Daily with a ticket then gets a deadline (dailyDeadline); without ticketAt, or for Free Play, the entry has none.
+    add(body, opts) {
       if (!validBody(body, version)) return Promise.resolve(false);
       const id = hashReplay(body.replay);
+      const dl = body.mode === 'daily' && body.ticket && opts && opts.ticketAt !== undefined ? dailyDeadline(opts.ticketAt, opts.frames !== undefined ? opts.frames : body.stats && body.stats.frames) : null;
       return editLock(() => {
         const items = load();
-        if (!items.some(e => e.id === id)) items.push({ id, body, tries: 0, next: 0, code: null });
+        if (!items.some(e => e.id === id)) items.push({ id, body, tries: 0, next: 0, code: null, ...(dl !== null && { deadline: dl }) });
         save(items);
         return true;
       });
@@ -176,11 +238,13 @@ export function createSubmitQueue({ remote, backend, now = () => Date.now(), loc
       flushing = lock('starfall-sendq-send', async () => {
         const done = [];
         for (let guard = 0; guard <= QUEUE_CAP; guard++) {
+          let sent = 0; // the time this try was claimed and sent
           const head = await editLock(() => {
             const items = load(), t = now();
             const e = items.find(x => x.next <= t);
             if (!e) return null;
-            e.tries++; e.next = t + backoffMs(e.tries, e.code); // a send that never ends still waits its turn
+            sent = t;
+            e.tries++; e.next = nextTry(t, e.tries, e.code, e.deadline); // a send that never ends still waits its turn
             save(items);
             return { ...e };
           });
@@ -198,7 +262,7 @@ export function createSubmitQueue({ remote, backend, now = () => Date.now(), loc
             let items = load();
             if (kind === 'retry') {
               const e = items.find(x => x.id === head.id);
-              if (e) { e.code = code; e.next = now() + backoffMs(e.tries, code); }
+              if (e) { e.code = code; e.next = afterFail(sent, now(), e.tries, code, e.deadline); }
             } else if (kind === 'version') {
               items = items.filter(x => x.id !== head.id && String(x.body.version) !== String(head.body.version));
             } else items = items.filter(x => x.id !== head.id);

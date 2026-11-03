@@ -36,6 +36,9 @@ function scratch(clientLine, extra, files = {}) {
   for (const dir of ['arcade', 'engine', 'games/starfall', 'leaderboard', 'server']) fs.mkdirSync(path.join(d, dir), { recursive: true });
   fs.writeFileSync(path.join(d, 'index.html'), '<title>x</title>');
   fs.writeFileSync(path.join(d, 'starfall.html'), '<title>x</title>');
+  fs.writeFileSync(path.join(d, 'stacklight.html'), '<title>x</title>');
+  fs.writeFileSync(path.join(d, 'robots.txt'), 'User-agent: *\nAllow: /\n');
+  fs.writeFileSync(path.join(d, 'sitemap.xml'), '<urlset></urlset>\n');
   for (const dir of ['arcade', 'engine', 'games', 'leaderboard']) fs.writeFileSync(path.join(d, dir, 'a.js'), extra && dir === 'engine' ? extra : '// ok\n');
   fs.writeFileSync(path.join(d, 'games', 'starfall', 'defs.js'), "export const GAME_VERSION = 'v-test';\n");
   fs.writeFileSync(path.join(d, 'server', 'client.js'), clientLine + '\n');
@@ -219,6 +222,8 @@ case "$url" in
   https://staticade.com/) bodyf="${path.join(d, 'index.html')}"; [ "$STUB_BREAK" = root ] && { code=307; bodyf=''; } ;;
   https://staticade.com/starfall) bodyf="${path.join(d, 'starfall.html')}" ;;
   https://staticade.com/starfall.html) code=307; h='location: /starfall' ;;
+  https://staticade.com/stacklight) bodyf="${path.join(d, 'stacklight.html')}" ;;
+  https://staticade.com/stacklight.html) code=307; h='location: /stacklight' ;;
   https://staticade.com/server/client.js) body=$(cat "${builtClient}"); [ "$STUB_BREAK" = client ] && body="export const REMOTE_LEADERBOARD_URL = '';" ;;
   https://staticade.com/games/starfall/defs.js) body=$(cat "${path.join(bin, 'defs.js')}"); [ "$STUB_BREAK" = stale ] && body="export const GAME_VERSION = 'old';" ;;
   'https://api.staticade.com/board?game=starfall')

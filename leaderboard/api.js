@@ -271,7 +271,10 @@ export function createLeaderboard({ storage = memoryAdapter(), now = () => Date.
   const wholeNum = (v) => typeof v === 'number' && Number.isInteger(v) && v >= 0;
 
   // Boards show one best run per player by default; pass unique:false for every run.
-  async function getBoard({ game, board = 'all', key, limit = 10, offset = 0, unique = true } = {}) {
+  // version (optional): drop runs whose stored replay has another major version ("2.0" keeps 2.x runs), so a game whose
+  // rules changed does not show old-rule runs from this device. A row with no stored replay is kept (a submitted run
+  // always has one while a board lists it). Left out, every run shows (as before).
+  async function getBoard({ game, board = 'all', key, limit = 10, offset = 0, unique = true, version } = {}) {
     if (typeof game !== 'string' || !GAME_RE.test(game)) throw bad('bad_game', 'game required');
     if (!wholeNum(limit) || !wholeNum(offset)) throw bad('bad_board', 'limit and offset must be whole numbers, 0 or more');
     let k;
@@ -286,6 +289,14 @@ export function createLeaderboard({ storage = memoryAdapter(), now = () => Date.
       k = keyDaily(game, day);
     } else throw bad('bad_board', "board must be 'all', 'daily' or 'season'");
     let rows = await loadBoard(k);
+    if (version !== undefined) {
+      const major = String(version).split('.')[0], keep = [];
+      for (const e of rows) {
+        const r = await storage.get(`replay:${e.id}`);
+        if (!r || typeof r !== 'object' || String(r.version).split('.')[0] === major) keep.push(e);
+      }
+      rows = keep;
+    }
     if (unique) rows = uniqueBest(rows);
     const lim = Math.min(100, limit);
     return rows.slice(offset, offset + lim).map((e, i) => ({ rank: offset + i + 1, name: e.name, score: e.score, date: e.date, mode: e.mode, id: e.id }));

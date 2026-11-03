@@ -13,7 +13,7 @@ import { W, H, CX, EV_SFX, EV_HITSTOP, EV_STATE, EV_POPUP, EV_EXPLODE, EV_FX, ST
 import { createAudioBind, ZONE_TRACKS, BOSS_TRACKS } from './audio-bind.js';
 import { createFx } from './fx.js';
 import { createRenderer } from './render.js';
-import { lobbyHit } from './render/core.js';
+import { lobbyHit, lobbyButton } from './render/core.js';
 import { createTitle, MENU } from './title.js';
 import { COL } from './sprites.js';
 import { installHooks } from './hooks.js';
@@ -54,7 +54,7 @@ const crtGate = { flush(a, b, c, d, e) { if (preFlush) preFlush(); crt.flush(a, 
 const renderer = createRenderer({ gfx, crt: crtGate, fx, text, ui });
 const title = createTitle({ dot: gfx.dot, text, drawSpr: renderer.drawSpr, panel: renderer.panel, fx, ui });
 // a gesture unlocks the audio once (the first one); later gestures never touch the audio clock (pause owns it)
-const makeInput = () => createInput({ target: window, surface: canvas, toField: cx => gfx.toFieldX(cx), onGesture: () => { if (bind.unlock()) syncMusic(); } });
+const makeInput = () => createInput({ target: window, surface: canvas, toField: cx => gfx.toFieldX(cx), excludeStart: (cx, cy) => pbHit(cx, cy), onGesture: () => { if (bind.unlock()) syncMusic(); } });
 let input = makeInput(); // leaving for the lobby disposes it; entering again makes a fresh one
 // a hidden tab suspends the audio; visible again resumes it only when not paused and not muted
 document.addEventListener('visibilitychange', () => bind.hidden(document.hidden));
@@ -148,6 +148,8 @@ if (sendq) {
   if (n) setStatus(statusFor({ kind: 'waiting', left: n }), COL.amber);
   setTimeout(flushQueue, 1000); // runs left from an earlier visit
   addEventListener('online', () => { sendq.wake().then(flushQueue); });
+  // a hidden tab's timers can fire a minute late, past a Daily's last try; coming back to the page sends what is due now
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && sendq.due()) flushQueue(); });
 }
 // D35a: after a daily run, C on the high-score table copies '<ARCADE_NAME> Daily #n · score · league' and the page link
 const HINT_SHARE = 'UP DOWN: BOARD   C: SHARE   FIRE: BACK';
@@ -204,6 +206,7 @@ addEventListener('touchstart', e => {
   if (e.target !== canvas) return;
   ui.touchUi = true;
   if (!onLobbyBtn() || e.touches.length !== 1 || !hitLobby(e.touches[0].clientX, e.touches[0].clientY)) return;
+  if (pbIn(e.touches[0].clientX, e.touches[0].clientY)) return; // a touch on the PAUSE spot is a plain pause-screen tap (resume), never LOBBY
   tapLobby = true; e.stopPropagation(); e.preventDefault();
 }, { capture: true, passive: false });
 addEventListener('touchmove', e => { if (tapLobby) { e.stopPropagation(); e.preventDefault(); } }, { capture: true, passive: false });
@@ -217,6 +220,74 @@ function endLobbyTouch(e) {
 }
 addEventListener('touchend', endLobbyTouch, { capture: true, passive: false });
 addEventListener('touchcancel', endLobbyTouch, { capture: true, passive: false });
+// the touch PAUSE button. Touch players only, in play only (app 'game', not paused, not behind the turn-sideways screen).
+// Where: sideways with a bezel strip at least PB_STRIP_MIN CSS px wide, it sits in the RIGHT strip, centred across it, from field
+// y PB_Y down (below the bezel's three lamps, which end near y 50), entirely outside the playfield. With no wide strip (4:3, an iPad
+// sideways) it sits at the field's right edge, PB_CORNER_IN field units in from it, from field y PB_CORNER_Y down: just under the
+// HUD row (boss name y 11, boss HP bar y 21, multiplier y 2 all end above y 24) and right of the HP bar's warped image.
+// in corner mode the glyph is drawn AFTER the CRT pass, flat, in its own dot pass over the playfield viewport. So the
+// glyph, the hit box and SF.pauseButton() are the same rectangle whether the CRT is on or off (it was once drawn before the CRT pass:
+// the curvature pulled the glyph about 30 field units inward and down while the hit box stayed put). With the CRT on that
+// rectangle lies in the tube's dark right bezel band (the warp shows the field inside about x 370 there), so it covers no
+// game content; with the CRT off it is the field's right edge under the HUD row.
+// the pause screen's LOBBY button is drawn flat after the CRT pass too (see render()), so its hit box is where it is
+// seen, and it ends at field x 364 (hit box 368), left of the corner box at every 4:3 size down to 640x480 (box from x 369).
+// On top of that, a touch that starts inside the PAUSE box is never a LOBBY tap, at any delay and however the run was paused:
+// it is a plain pause-screen tap and resumes. (the old 0.5 s guard is gone: it is no longer needed.) Size: PB_CSS x PB_CSS CSS px (48, above the 44
+// minimum) at every window size. A finger that STARTS on the box is excluded from the input layer (it never steers, fires or
+// kindles); lifting it still on the box pauses, exactly like P. A finger that starts elsewhere and slides onto it keeps steering
+// and never pauses.
+const PB_CSS = 48, PB_STRIP_MIN = 64, PB_Y = 56, PB_CORNER_IN = 1, PB_CORNER_Y = 27;
+const pb = new Float64Array(5); // field units: x, y, size, strip (1) or corner (0), CSS px per field unit
+function pbBuild(view) {
+  const per = view.scale / view.dpr, sz = PB_CSS / per;
+  pb[2] = sz; pb[4] = per;
+  if (view.padX * per >= PB_STRIP_MIN) { pb[0] = gfx.W + (view.padX - sz) / 2; pb[1] = PB_Y; pb[3] = 1; }
+  else { pb[0] = gfx.W - PB_CORNER_IN - sz; pb[1] = PB_CORNER_Y; pb[3] = 0; }
+}
+gfx.onResize(pbBuild); pbBuild(gfx.view);
+function pbShown() { return !away && ui.touchUi === true && app === 'game' && !ui.paused && !rotate.shown(); }
+function pbHit(cx, cy) { return pbShown() && pbIn(cx, cy); }
+function pbIn(cx, cy) { // client (CSS px) point inside the button's box; the box is where the glyph is drawn (flat, never warped)
+  const r = canvas.getBoundingClientRect(), v = gfx.view;
+  const fx = gfx.toFieldX(cx - r.left), fy = ((cy - r.top) * v.dpr - v.y) / v.scale;
+  return fx >= pb[0] && fx <= pb[0] + pb[2] && fy >= pb[1] && fy <= pb[1] + pb[2];
+}
+let pbId = -1, pauseAsk = false; // the finger that started on the button; a finished tap on it asks the tick to pause
+addEventListener('touchstart', e => {
+  if (e.target !== canvas || pbId !== -1 || !pbShown()) return;
+  const cl = e.changedTouches;
+  for (let i = 0; i < cl.length; i++) if (pbHit(cl[i].clientX, cl[i].clientY)) { pbId = cl[i].identifier; break; }
+}, { capture: true, passive: true });
+function endPbTouch(e) {
+  if (pbId === -1) return;
+  const cl = e.changedTouches;
+  for (let i = 0; i < cl.length; i++) {
+    if (cl[i].identifier !== pbId) continue;
+    pbId = -1;
+    if (e.type === 'touchend' && pbHit(cl[i].clientX, cl[i].clientY)) pauseAsk = true;
+    break;
+  }
+}
+addEventListener('touchend', endPbTouch, { capture: true, passive: true });
+addEventListener('touchcancel', endPbTouch, { capture: true, passive: true });
+const PB_COL = [0.45, 0.45, 0.62];
+// the button: a dotted frame and two bars (a pause glyph). No allocation: fixed loops over module numbers.
+function drawPauseBtn() {
+  if (!pbShown()) return;
+  ui.pbF = ui.F; // test hook: the frame the button was last drawn (SF.pauseButtonDrawn())
+  const x0 = pb[0], y0 = pb[1], sz = pb[2], dot = gfx.dot, per = pb[4];
+  const s = Math.max(1.2, 2 / per), hot = pbId !== -1 ? 1 : 0, fa = 0.4 + 0.2 * hot, ga = 0.55 + 0.2 * hot, k = sz / 8;
+  for (let i = 0; i <= 8; i++) { dot(x0 + i * k, y0, s, PB_COL[0], PB_COL[1], PB_COL[2], fa); dot(x0 + i * k, y0 + sz, s, PB_COL[0], PB_COL[1], PB_COL[2], fa); }
+  for (let i = 1; i < 8; i++) { dot(x0, y0 + i * k, s, PB_COL[0], PB_COL[1], PB_COL[2], fa); dot(x0 + sz, y0 + i * k, s, PB_COL[0], PB_COL[1], PB_COL[2], fa); }
+  for (let b = 0; b < 2; b++) {
+    const bx = x0 + sz * (b ? 0.64 : 0.36);
+    for (let j = 0; j < 6; j++) {
+      const by = y0 + sz * (0.27 + 0.092 * j);
+      dot(bx - sz * 0.04, by, s, 0.6, 0.6, 0.85, ga); dot(bx + sz * 0.04, by, s, 0.6, 0.6, 0.85, ga);
+    }
+  }
+}
 addEventListener('keydown', e => { // typing a letter on the name entry screen
   if (app === 'entry' && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && /^Key[A-Z]$/.test(e.code)) typed = e.code.charCodeAt(3) - 64;
   // the clipboard wants a real key press, so the share runs here and not in the tick
@@ -239,6 +310,7 @@ function startRun(stage = 1, opts = {}) {
   // daily: today's UTC seed. A seed passed in (test hook) or a stage start is a practice run: no run record, never submitted.
   const custom = opts.seed != null || stage > 1;
   run = custom ? null : daily ? (opts.server ? modes.begin(MODE_DAILY, 0, opts.server) : modes.begin(MODE_DAILY)) : modes.begin(MODE_FREE, newSeed());
+  if (run && opts.server && Number.isFinite(opts.ticketAt)) run.ticketAt = opts.ticketAt;
   if (!custom) selMode = run.mode;
   const seed = run ? run.seed : opts.seed != null ? opts.seed >>> 0 : newSeed();
   const mode = stage > 1 ? 'stage' + stage : daily ? 'daily' : 'arcade';
@@ -375,9 +447,10 @@ function chooseDaily() {
     return d;
   })().then(d => {
     if (sid !== session) return null; // the player left for the lobby meanwhile (leave already cleared the ask)
+    const ticketAt = Date.now(); // when the ticket arrived; the send queue times the server's ticket window from it
     dailyAsk = null; dailyNote = '';
     if (app !== fromApp || run !== fromRun) return null; // the player went somewhere else meanwhile (free play, attract)
-    startRun(1, { daily: true, server: d });
+    startRun(1, { daily: true, server: d, ticketAt });
     return MODE_DAILY;
   }, e => {
     if (sid !== session) return null;
@@ -411,7 +484,7 @@ function afterResults() {
 function confirmEntry() {
   if (savingNow) return lastSubmit;
   savingNow = true; kv.set('name', entry.name);
-  const name = entry.name, rp = replayString();
+  const name = entry.name, rp = replayString(), ticketAt = run ? run.ticketAt : undefined, frames = sim.frame;
   lastSubmit = (async () => {
     try {
       const id = playerId || await getLocalPlayerId(lbStore);
@@ -421,7 +494,7 @@ function confirmEntry() {
       lastDaily = run.mode === MODE_DAILY ? { id: hashReplay(rp), dayKey: run.dayKey, score: sim.score, league: remote ? null : res.league && res.league.label } : null; // remote on: the league is the server's (set in onQueueEvent), never the local board's guess
       if (sendq) {
         let queued = false; addRefused = false;
-        try { queued = (await sendq.add(body)) === true; } catch (e) { queued = false; }
+        try { queued = (await sendq.add(body, { ticketAt, frames })) === true; } catch (e) { queued = false; }
         if (queued) { setStatus(statusFor({ kind: 'sending' }), COL.teal); table.note = ''; } // then the queue sends it
         else { addRefused = true; setStatus(statusFor({ kind: 'nosend' }), COL.amber); table.setResult(res); } // saved here, will not be sent
       } else table.setResult(res);
@@ -452,7 +525,7 @@ function toLobby() {
 }
 export function leaveStarfall() {
   if (away) return;
-  away = true; session++; tapLobby = false; lobbyAsk = false;
+  away = true; session++; tapLobby = false; lobbyAsk = false; pbId = -1; pauseAsk = false;
   loop.stop(); input.dispose();
   clearTimeout(boardTimer); boardTimer = 0;
   ui.paused = false; audioPaused = true; bind.pause(true); bind.music(null);
@@ -481,7 +554,7 @@ function tick() {
   // submitted behind the screen); they carry on from where they were as soon as the phone is sideways, with no extra tap.
   // The cabinet, title and menus are not held (a touch-phone test drives the cabinet upright); the screen is only drawn over them.
   if (rotate.tick() && (app === 'game' || app === 'results' || app === 'entry')) {
-    input.poll(); input.clearLatches(); lobbyAsk = false; tapLobby = false; tapShare = false; typed = 0;
+    input.poll(); input.clearLatches(); lobbyAsk = false; tapLobby = false; tapShare = false; typed = 0; pbId = -1; pauseAsk = false;
     if (app === 'game' && !ui.paused) ui.paused = true;
     if (ui.paused !== audioPaused) { audioPaused = ui.paused; bind.pause(audioPaused); }
     return;
@@ -494,6 +567,7 @@ function tick() {
   else if ((m & M_BACK) && app === 'game') { // in a run Esc / Backspace pauses; while paused it leaves for the lobby (the run is abandoned, nothing is submitted)
     if (!ui.paused) ui.paused = true; else if (toLobby()) return;
   }
+  if (pauseAsk) { pauseAsk = false; if (app === 'game' && !ui.paused) { ui.paused = true; input.releaseAll(); input.clearLatches(); } } // a finger still steering must not turn its lift into a resume tap
   if (ui.paused !== audioPaused) { audioPaused = ui.paused; bind.pause(audioPaused); }
   if (lobbyAsk) { lobbyAsk = false; if (ui.paused && app === 'game' && toLobby()) return; } // the touch LOBBY button
   if (ui.paused) { if (m & M_FIRE) { ui.paused = false; input.clearLatches(); } return; }
@@ -586,6 +660,14 @@ function render(al) {
   if (rotate.shown()) { rotate.draw(app === 'game' ? 'YOUR RUN IS PAUSED' : app === 'results' || app === 'entry' ? 'YOUR SCORE WAITS' : ''); return; } // rotate screen
   drawApp(al);
   rotate.drawBezel(); // sideways, the strips beside the playfield get dim bezel dots instead of black
+  if (pbShown()) { // the touch PAUSE button, after everything else and after the CRT pass, so it is never warped
+    gfx.reset(); drawPauseBtn();
+    if (pb[3] === 1) gfx.drawBars(); // in the right strip
+    else { gfx.toViewport(); gfx.drawDots(0, 0, 0); } // corner mode, flat over the playfield viewport (CRT bezel band or field edge)
+  }
+  // the touch LOBBY button on the pause screen, also after the CRT pass and flat, so the box lobbyHit tests is the box the
+  // player sees, CRT on or off (drawn inside the CRT pass, the warp moved it about 15 field units in and down, off its hit box)
+  if (ui.paused && app === 'game' && ui.canLobby && ui.touchUi) { gfx.reset(); lobbyButton(R); gfx.toViewport(); gfx.drawDots(0, 0, 0); }
 }
 function drawApp(al) {
   const a = ui.paused || frozen ? 1 : al;
@@ -629,6 +711,13 @@ window.SF = {
   ticks() { return { appT: ui.appT, entryT: entry.t }; }, // ticks the results timer and the name-entry countdown have counted (held behind the turn-sideways screen); read only
   bezelDots() { return rotate.bezelDots(); }, // dots in the bezel strips (0 when the window is not wider than 4:3)
   touchUi() { return !!ui.touchUi; }, // touch player (coarse pointer or a touch seen this session)
+  pauseButton() { // the touch PAUSE button's box in CSS px (x, y, w, h) and where it sits ('strip' or 'corner'), or null when not shown
+    if (!pbShown()) return null;
+    const r = canvas.getBoundingClientRect(), v = gfx.view;
+    return { x: r.left + (v.x + pb[0] * v.scale) / v.dpr, y: r.top + (v.y + pb[1] * v.scale) / v.dpr, w: PB_CSS, h: PB_CSS, where: pb[3] === 1 ? 'strip' : 'corner' };
+  },
+  pauseButtonFinger() { return pbId; }, // the id of the finger that started on the PAUSE button, -1 when none (read only)
+  pauseButtonDrawn() { return ui.pbF !== undefined && ui.F - ui.pbF <= 2; }, // the PAUSE button was drawn in the last frames
   lobbyButton() { return ui.lobbyBtnF !== undefined && ui.F - ui.lobbyBtnF <= 2; }, // the touch LOBBY button was drawn in the last frames
   scores(board = 'all', key, unique = true) { return lb.getBoard({ game: GAME_ID, board, key, limit: 10, unique }); }, // unique false = every saved run, not the best per player
   // remote() the remote board's address ('' = off); boardScores(board) reads the board the table shows

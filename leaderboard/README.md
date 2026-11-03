@@ -28,7 +28,7 @@ const lb = createLeaderboard({
 | Method | Returns |
 |---|---|
 | `submitScore({ game, playerId, name, score, replay, seed, mode, dayKey?, version, stats? })` | `{ id, placements: {all, daily?, season}, trophyDelta, trophies, league: {name, tier, label}, rating: {avg5, top5, enteredTop5, percentile}, promoted?, demoted?, from? }` |
-| `getBoard({ game, board, key?, limit=10, offset=0, unique=true })` | `[{ rank, name, score, date, mode, id }]` |
+| `getBoard({ game, board, key?, limit=10, offset=0, unique=true, version? })` | `[{ rank, name, score, date, mode, id }]`; with `version`, runs whose stored replay has another major version are left out |
 | `getRank({ game, playerId })` | `{ trophies, league, tier, season: {id,start,end}, best, seasonBest, avg5, top5, percentile, players, carry }` |
 | `getReplay(id)` | stored run (`replay` string, seed, version, stats) or `null` |
 | `getSeason(now?)` | `{ id, start, end }` (ms) |

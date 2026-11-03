@@ -148,10 +148,16 @@ export const hudLayer = {
 
 // the touch-only LOBBY button on the pause screen, in field units (400 x 300). Top right, under the boss bar (y 21)
 // and the multiplier, far from the centre where a resume tap lands. The hit box is the drawn box plus 4 units.
-export const LOBBY_BOX = Object.freeze({ x0: 322, x1: 392, y0: 32, y1: 56 });
+// main.js draws it after the CRT pass (flat, so the hit box is where it is seen), and it ends at x 364 (was 392), so its
+// hit box (to 368) stays left of the corner PAUSE box (from x 369 at 640x480, about 380 at the iPad sizes).
+// It spans y 43 to 61 (was 32 to 56). The boss name and HP bar are drawn inside the CRT pass, and the warp pulls them in
+// and down (the HP bar's drawn image sits at y 33 to 38 over the panel's x range); the flat panel at y 32 sat on them.
+// From y 43 it clears them by about 5.5 units, CRT on. It ends at 61 so its hit box (to 65) keeps the "a tap 10 units
+// below the old box resumes" spot (y 66) outside, and still holds the old centre (357, 44) that the touch tests tap.
+export const LOBBY_BOX = Object.freeze({ x0: 322, x1: 364, y0: 43, y1: 61 });
 const LOBBY_PAD = 4;
 export const lobbyHit = (x, y) => x >= LOBBY_BOX.x0 - LOBBY_PAD && x <= LOBBY_BOX.x1 + LOBBY_PAD && y >= LOBBY_BOX.y0 - LOBBY_PAD && y <= LOBBY_BOX.y1 + LOBBY_PAD;
-function lobbyButton(R) {
+export function lobbyButton(R) {
   const b = LOBBY_BOX, F = R.ui.F;
   R.ui.lobbyBtnF = F; // test hook: the frame the button was last drawn (SF.lobbyButton())
   R.panel(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0, COL.amber, 0.85);
@@ -166,7 +172,7 @@ export const overlayLayer = {
     const F = ui.F, stateT = ui.appT;
     if (ui.paused) {
       text('PAUSED', CX, 150, COL.white, 2, 'c');
-      if (ui.canLobby && st !== 'results' && ui.touchUi) { text('TAP: RESUME', CX, 170, COL.dim, 1, 'c'); lobbyButton(R); } // touch players get a LOBBY button
+      if (ui.canLobby && st !== 'results' && ui.touchUi) text('TAP: RESUME', CX, 170, COL.dim, 1, 'c'); // touch players get a LOBBY button (main.js draws it after the CRT pass)
       else if (ui.canLobby && st !== 'results') text('ESC: LOBBY   FIRE: RESUME', CX, 170, COL.dim, 1, 'c');
       else text('PRESS FIRE', CX, 170, COL.dim, 1, 'c');
       return;

@@ -14,13 +14,15 @@
 // WebCrypto only (globalThis.crypto.subtle), so the same code runs in the Worker and in Node.
 // No secret set: dailySecretOf returns null and the server keeps the public seed and today's checks.
 import { dailySeed } from '../engine/rng.js';
+import { TICKET_SLACK_S, TICKET_GRACE_S, FPS } from '../leaderboard/ticket-window.js';
 
 export const MIN_SECRET_LEN = 32; // `openssl rand -hex 32` gives 64 characters
 // A run may claim at most this much more play time than real time has passed since its ticket (seconds). Covers the
 // difference between two Worker copies' clocks; an honest run is always shorter than the time since the ticket,
 // because the game asks for the ticket before the run starts and the sim runs at most 60 frames a second.
-export const TICKET_SLACK_S = 10;
-export const FPS = 60;
+// TICKET_SLACK_S, TICKET_GRACE_S and FPS are defined in leaderboard/ticket-window.js (the game's send queue reads them
+// too, and the site deploy ships leaderboard/ but not this file); re-exported here, same values.
+export { TICKET_SLACK_S, TICKET_GRACE_S, FPS };
 const TICKET_RE = /^([0-9a-z]{1,11})\.([A-Za-z0-9_-]{43})$/; // 32-byte MAC in base64url without padding is 43 chars
 
 export class DailyConfigError extends Error {}
@@ -97,3 +99,22 @@ export function createDailyKeys() {
 
 // Frames a run may have if its ticket was issued at issuedAt and it is checked at t (both ms, server clock).
 export const maxFramesSince = (issuedAt, t) => Math.floor(((t - issuedAt) / 1000 + TICKET_SLACK_S) * FPS);
+
+// A ticket's maximum age. A ticketed Daily must arrive within its own play time (frames / 60 s) plus a
+// grace plus TICKET_SLACK_S after its ticket was issued, or it is refused (ticket_stale). Before this a ticket was good
+// for about 48 hours, time enough to work the seed out offline.
+// Why 10 minutes of grace: the real time around a run that is not play time. The game asks for the ticket when the
+// Daily starts (menu to first frame is seconds; STACKLIGHT asks again if its cached ticket is over a minute old),
+// the pause screen stops the sim but not the clock, then the name entry after game over, then the send (the client's
+// timeout and the submit queue's retries). The queue knows this window and spaces a Daily's retries so the last
+// try lands 30 s before it closes (games/starfall/submit-queue.js); a page made visible again sends a due try at
+// once. A Daily is lost only if the server stays unreachable until that last try, or the player keeps the tab hidden
+// past the window; the queue then drops it with ticket_stale, it never loops. The brief caps the grace at 10 minutes. TICKET_SLACK_S (the
+// existing allowance for two Worker copies' clocks, used the other way round by maxFramesSince) is added on top for
+// the same reason: issuedAt and the check may come from two Worker copies.
+// ON by default: server/worker.js LIMITS.ticketGraceS is TICKET_GRACE_S. A test can pass limits
+// { ticketGraceS: null } to a Worker copy to switch it off.
+// true when a run of `frames` frames on a ticket issued at issuedAt arrives too late at t (ms, server clock)
+export const ticketStale = (issuedAt, frames, t, graceS = TICKET_GRACE_S) => t - issuedAt > (frames / FPS + graceS + TICKET_SLACK_S) * 1000;
+// kv rows dailyrun:<day>:... are kept this long (a Daily is taken for today or yesterday only, so 3 days is plenty)
+export const DAILY_KEEP_MS = 3 * 86400000;
