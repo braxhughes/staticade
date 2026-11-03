@@ -27,7 +27,7 @@
 <a name="how-it-was-built"></a>
 <img src="docs/media/h-built.svg" alt="How it was built" width="100%" />
 
-I directed a team of AI coding agents. They wrote the code; I set the goals and rules, approved every change to an existing test, and played every build.
+I designed Staticade and ran the build on my own workflow and governance layer for Claude Code. Agents wrote the code. I steered the coordinators, made the design calls, supplied references and assets, approved every change to an existing test, and played every build.
 
 <img src="docs/media/stats.svg" alt="4 days, October 27 to 30, 2026. 421 commits. 688 Node tests passing. 17 test changes I approved by hand." width="100%" />
 
@@ -35,7 +35,7 @@ I directed a team of AI coding agents. They wrote the code; I set the goals and 
 
 | What I did | What the agents did |
 |---|---|
-| Set the goals, their order, and the rules every agent follows | Wrote all the runtime code: engine, game, lobby, server, tools |
+| Designed the workflow and governance layer the agents ran on. Set the goals, their order and the rules | Wrote all the runtime code: engine, game, lobby, server, tools |
 | Answered design questions and sent back what felt wrong in playtests | Wrote the tests, the design spec and notes on every change |
 | Approved or refused each change to an existing test | Planned the cards, built them, and reviewed each other's work |
 
