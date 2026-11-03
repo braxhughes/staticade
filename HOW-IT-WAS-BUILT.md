@@ -98,7 +98,7 @@ Other useful tools:
 
 ## Honest limits
 
-- Every reviewer was a Claude model too, just a fresh instance. No outside human has reviewed the code.
+- Every code review was done by a fresh Claude agent that had not seen the work. Risky parts (commands, hooks, anything touching the game simulation or the server) came to me with the code and what it would do, and I decided how to handle them.
 - Determinism is proven on Chrome's engine only, not yet on Firefox or Safari.
 - At launch there is no real-player data yet, so the near-copy threshold was measured on simulated runs only.
 

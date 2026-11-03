@@ -27,7 +27,7 @@
 <a name="how-it-was-built"></a>
 <img src="docs/media/h-built.svg" alt="How it was built" width="100%" />
 
-I designed Staticade and ran the build on my own workflow and governance layer for Claude Code. Agents wrote the code; I steered the whole time. Whenever an agent hit a call it shouldn't make alone (taste, originality, scope, a test change), it stopped and asked me. I playtested every build and sent back what felt wrong.
+I designed Staticade and ran the build on my own workflow and governance layer for Claude Code. Agents wrote the code; I steered the whole time. Whenever an agent hit a call it shouldn't make alone (taste, originality, scope, a test change, or a risky command or hook), it stopped, showed me the code or command, explained what it would do, and asked how I wanted to handle it. I playtested every build and sent back what felt wrong.
 
 <img src="docs/media/stats.svg" alt="36 times the agents stopped and asked me to decide. 17 test changes I approved or refused by hand. 11 coordinator sessions I ran, handed off at context limits. 4 days, October 27 to 30, 2026. 421 commits. 688 Node tests passing." width="100%" />
 
