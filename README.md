@@ -58,7 +58,7 @@ I designed Staticade and ran the build on my own workflow and governance layer f
 
 <img src="docs/media/fair.svg" alt="Browser: runs the game at a fixed 60 steps a second from one seed. Replay: the seed plus one input word per frame, compressed. Worker: re-runs the replay on the same game code in a Cloudflare Worker. D1: stores the score the re-run produced, not the one the client claims. Duplicate replays are refused and near-copies held for review." width="100%" />
 
-**Honest limits.** Every reviewer was a Claude model too, just a fresh instance; no outside human has reviewed the code. Determinism is proven on Chrome's engine only. There is no real-player data yet. The full write-up, including how originality was checked, is in [HOW-IT-WAS-BUILT.md](HOW-IT-WAS-BUILT.md).
+The full write-up, including how originality was checked, is in [HOW-IT-WAS-BUILT.md](HOW-IT-WAS-BUILT.md).
 
 <img src="docs/media/h-run.svg" alt="Run it" width="100%" />
 
