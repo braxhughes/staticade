@@ -27,17 +27,28 @@
 <a name="how-it-was-built"></a>
 <img src="docs/media/h-built.svg" alt="How it was built" width="100%" />
 
-I designed Staticade and ran the build on my own workflow and governance layer for Claude Code. Agents wrote the code. I steered the coordinators, made the design calls, supplied references and assets, approved every change to an existing test, and played every build.
+I designed Staticade and ran the build on my own workflow and governance layer for Claude Code. Agents wrote the code; I steered the whole time. Whenever an agent hit a call it shouldn't make alone (taste, originality, scope, a test change), it stopped and asked me. I playtested every build and sent back what felt wrong.
 
-<img src="docs/media/stats.svg" alt="4 days, October 27 to 30, 2026. 421 commits. 688 Node tests passing. 17 test changes I approved by hand." width="100%" />
+<img src="docs/media/stats.svg" alt="36 times the agents stopped and asked me to decide. 17 test changes I approved or refused by hand. 11 coordinator sessions I ran, handed off at context limits. 4 days, October 27 to 30, 2026. 421 commits. 688 Node tests passing." width="100%" />
 
 <img src="docs/media/pipeline.svg" alt="The build loop. 1 Goal (me): goals in priority order plus the rules every agent follows. 2 Plan (coordinator agent): splits goals into cards with written briefs. 3 Build (builder agent): one card in its own git branch, never grades its own work. 4 Re-run (coordinator): runs the full test suite again instead of trusting the report. 5 Review (fresh agent): never saw the work, writes probes and tries to break it. 6 Fix or stop: fixes go back to review; after two failed reviews I decide. 7 Look (agents): headless screenshots of each slice, opened and described. 8 Playtest (me): what feels wrong goes back as a new card." width="100%" />
+
+**Where I steered.** A few of the calls that changed the game:
+
+| I said | What changed |
+|---|---|
+| The CRT look was getting ruined by shaded blobs | The sky wash and a zone shimmer grid were removed |
+| Power-ups last forever and wingmen stack | Power-ups capped at 15 seconds, one wingman at a time |
+| It gets boring by stage 5, and the ECLIPSE boss fires too much | A stage-variety plan, and a cap on ECLIPSE's bullets |
+| Review flagged KINDLE as too close to a classic capture move | I kept it and the differences were sharpened |
+| The new lobby's layout and vibe weren't there | Rejected and rebuilt from my notes |
+| Pick a name nobody else has | I rejected taken names, chose STATICADE and bought the domain |
 
 | What I did | What the agents did |
 |---|---|
 | Designed the workflow and governance layer the agents ran on. Set the goals, their order and the rules | Wrote all the runtime code: engine, game, lobby, server, tools |
-| Answered design questions and sent back what felt wrong in playtests | Wrote the tests, the design spec and notes on every change |
-| Approved or refused each change to an existing test | Planned the cards, built them, and reviewed each other's work |
+| Set the design direction (original answers to the classics, every system explainable in one line) and made the taste, scope and originality calls | Researched the classics and wrote the design spec with its numbers, the tests and notes on every change |
+| Playtested every build, approved or refused each test change, and kept merges, deploys and purchases as my call | Planned the cards, built them, and reviewed each other's work |
 
 **Tests are append-only for agents.** An agent can add tests but not edit or delete one to make something pass. When a design change made an old test wrong, the agent wrote down the exact old and new assertion and I approved or refused it. Each approval is its own labelled commit. One builder loosened its own test; the reviewer flagged it and it was not merged.
 

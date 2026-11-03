@@ -4,7 +4,7 @@
 
 ## In one paragraph
 
-I set the goals, the rules and the taste, and I playtested. Claude agents wrote the code, the tests and the design spec. A coordinator agent split the work into small cards. A builder agent did each card in its own git branch. A fresh agent that had not seen the work then reviewed it and tried to break it. The rule the process followed: a card did not merge while its review had serious findings open. "Directed and tested by a human, written by AI agents" is the honest summary.
+I designed the workflow and governance layer the agents ran on, set the goals, the rules and the design direction, made the calls the agents escalated to me, and playtested every build. Claude agents wrote the code and the tests, and researched and wrote the design spec. A coordinator agent split the work into small cards. A builder agent did each card in its own git branch. A fresh agent that had not seen the work then reviewed it and tried to break it. The rule the process followed: a card did not merge while its review had serious findings open. "Designed and steered by me, written by AI agents" is the honest summary.
 
 ## What Staticade is
 
