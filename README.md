@@ -33,16 +33,9 @@ I designed Staticade and ran the build on my own workflow and governance layer f
 
 <img src="docs/media/pipeline.svg" alt="The build loop. 1 Goal (me): goals in priority order plus the rules every agent follows. 2 Plan (coordinator agent): splits goals into cards with written briefs. 3 Build (builder agent): one card in its own git branch, never grades its own work. 4 Re-run (coordinator): runs the full test suite again instead of trusting the report. 5 Review (fresh agent): never saw the work, writes probes and tries to break it. 6 Fix or stop: fixes go back to review; after two failed reviews I decide. 7 Look (agents): headless screenshots of each slice, opened and described. 8 Playtest (me): what feels wrong goes back as a new card." width="100%" />
 
-**Where I steered.** A few of the calls that changed the game:
+<img src="docs/media/h-decisions.svg" alt="Decisions I owned" width="100%" />
 
-| I said | What changed |
-|---|---|
-| The CRT look was getting ruined by shaded blobs | The sky wash and a zone shimmer grid were removed |
-| Power-ups last forever and wingmen stack | Power-ups capped at 15 seconds, one wingman at a time |
-| It gets boring by stage 5, and the ECLIPSE boss fires too much | A stage-variety plan, and a cap on ECLIPSE's bullets |
-| Review flagged KINDLE as too close to a classic capture move | I kept it and the differences were sharpened |
-| The new lobby's layout and vibe weren't there | Rejected and rebuilt from my notes |
-| Pick a name nobody else has | I rejected taken names, chose STATICADE and bought the domain |
+<img src="docs/media/decisions.svg" alt="Decisions I owned. System: designed the workflow and governance layer the build ran on (coordinator, written briefs, one isolated git worktree per card); set the review policy (a fresh agent on a different model told to break the work; two failed reviews stop the line and come to me); made tests append-only for agents. Product: an arcade of original games across genres, shooter first, block puzzle and platform race next; every game ships a Daily with one seed for everyone; progression is cosmetic and earned, never sold; set launch scope and timing. Design: learn what made the classics work and answer each idea our own way, every system explainable in one line; a landscape layout, a cabinet intro and the CRT pass; ruled on originality flags. Risk: risky commands and hooks came to me with the code and what it would do, and I chose how to handle each; merges to main, deploys, accounts and anything paid stayed off-limits to agents; approved or refused 17 test changes. Playtests: killed a CRT regression, capped power-ups at 15 seconds, one wingman at a time, capped ECLIPSE fire, ordered a stage-variety plan, sent the lobby back for a rebuild." width="100%" />
 
 | What I did | What the agents did |
 |---|---|
