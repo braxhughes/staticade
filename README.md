@@ -27,17 +27,21 @@
 <a name="how-it-was-built"></a>
 <img src="docs/media/h-built.svg" alt="How it was built" width="100%" />
 
-I directed a team of AI coding agents. They wrote the code; I set the goals and rules, approved every change to an existing test, and played every build.
+I designed Staticade and ran the build on my own workflow and governance layer for Claude Code. Agents wrote the code; I steered the whole time. Whenever an agent hit a call it shouldn't make alone (taste, originality, scope, a test change, or a risky command or hook), it stopped, showed me the code or command, explained what it would do, and asked how I wanted to handle it. I playtested every build and sent back what felt wrong.
 
-<img src="docs/media/stats.svg" alt="4 days, October 27 to 30, 2026. 421 commits. 688 Node tests passing. 17 test changes I approved by hand." width="100%" />
+<img src="docs/media/stats.svg" alt="36 times the agents stopped and asked me to decide. 17 test changes I approved or refused by hand. 11 coordinator sessions I ran, handed off at context limits. 4 days, October 27 to 30, 2026. 421 commits. 688 Node tests passing." width="100%" />
 
 <img src="docs/media/pipeline.svg" alt="The build loop. 1 Goal (me): goals in priority order plus the rules every agent follows. 2 Plan (coordinator agent): splits goals into cards with written briefs. 3 Build (builder agent): one card in its own git branch, never grades its own work. 4 Re-run (coordinator): runs the full test suite again instead of trusting the report. 5 Review (fresh agent): never saw the work, writes probes and tries to break it. 6 Fix or stop: fixes go back to review; after two failed reviews I decide. 7 Look (agents): headless screenshots of each slice, opened and described. 8 Playtest (me): what feels wrong goes back as a new card." width="100%" />
 
+<img src="docs/media/h-decisions.svg" alt="Decisions I owned" width="100%" />
+
+<img src="docs/media/decisions.svg" alt="Decisions I owned. System: designed the workflow and governance layer the build ran on (coordinator, written briefs, one isolated git worktree per card); set the review policy (a fresh agent on a different model told to break the work; two failed reviews stop the line and come to me); made tests append-only for agents. Product: an arcade of original games across genres, shooter first, block puzzle and platform race next; every game ships a Daily with one seed for everyone; progression is cosmetic and earned, never sold; set launch scope and timing. Design: learn what made the classics work and answer each idea our own way, every system explainable in one line; a landscape layout, a cabinet intro and the CRT pass; ruled on originality flags. Risk: risky commands and hooks came to me with the code and what it would do, and I chose how to handle each; merges to main, deploys, accounts and anything paid stayed off-limits to agents; approved or refused 17 test changes. Playtests: killed a CRT regression, capped power-ups at 15 seconds, one wingman at a time, capped ECLIPSE fire, ordered a stage-variety plan, sent the lobby back for a rebuild." width="100%" />
+
 | What I did | What the agents did |
 |---|---|
-| Set the goals, their order, and the rules every agent follows | Wrote all the runtime code: engine, game, lobby, server, tools |
-| Answered design questions and sent back what felt wrong in playtests | Wrote the tests, the design spec and notes on every change |
-| Approved or refused each change to an existing test | Planned the cards, built them, and reviewed each other's work |
+| Designed the workflow and governance layer the agents ran on. Set the goals, their order and the rules | Wrote all the runtime code: engine, game, lobby, server, tools |
+| Set the design direction (original answers to the classics, every system explainable in one line) and made the taste, scope and originality calls | Researched the classics and wrote the design spec with its numbers, the tests and notes on every change |
+| Playtested every build, approved or refused each test change, and kept merges, deploys and purchases as my call | Planned the cards, built them, and reviewed each other's work |
 
 **Tests are append-only for agents.** An agent can add tests but not edit or delete one to make something pass. When a design change made an old test wrong, the agent wrote down the exact old and new assertion and I approved or refused it. Each approval is its own labelled commit. One builder loosened its own test; the reviewer flagged it and it was not merged.
 
@@ -47,7 +51,7 @@ I directed a team of AI coding agents. They wrote the code; I set the goals and 
 
 <img src="docs/media/fair.svg" alt="Browser: runs the game at a fixed 60 steps a second from one seed. Replay: the seed plus one input word per frame, compressed. Worker: re-runs the replay on the same game code in a Cloudflare Worker. D1: stores the score the re-run produced, not the one the client claims. Duplicate replays are refused and near-copies held for review." width="100%" />
 
-**Honest limits.** Every reviewer was a Claude model too, just a fresh instance; no outside human has reviewed the code. Determinism is proven on Chrome's engine only. There is no real-player data yet. The full write-up, including how originality was checked, is in [HOW-IT-WAS-BUILT.md](HOW-IT-WAS-BUILT.md).
+The full write-up, including how originality was checked, is in [HOW-IT-WAS-BUILT.md](HOW-IT-WAS-BUILT.md).
 
 <img src="docs/media/h-run.svg" alt="Run it" width="100%" />
 
