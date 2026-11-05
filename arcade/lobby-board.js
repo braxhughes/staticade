@@ -8,6 +8,7 @@ import { localStorageAdapter, isPlayerId } from '../leaderboard/storage.js';
 import { pickLeaderboard, REMOTE_LEADERBOARD_URL } from '../server/client.js';
 import { gateReads } from '../games/starfall/submit-queue.js';
 import { FONT } from '../engine/font.js';
+import { versionBoard } from '../games/stacklight/modes.js';
 
 export const BOARD_ROWS = 10;      // the classic arcade high-score table length
 export const RANK_WINDOW = 100;    // rows read in one request (one server window); a rank past it reads "100+"
@@ -22,6 +23,9 @@ const cleanName = s => {
 };
 
 // lb: anything with getBoard / getRank (local createLeaderboard, or a gated remote client).
+// game: the board's game id. The browser path (browserBoard below) requires it. The 'starfall' default here stays only
+// because tests/w31-lobby-node.test.js builds a board on the real local leaderboard with no id and expects STARFALL's
+// (empty) board; removing it needs that test changed, which is an operator call.
 // playerId(): resolves to this device's player id, or null when it has none yet (never creates one).
 export function createLobbyBoard({ lb, game = 'starfall', playerId = async () => null }) {
   const rows = [];
@@ -29,6 +33,7 @@ export function createLobbyBoard({ lb, game = 'starfall', playerId = async () =>
   let pending = null;
   // state: 'idle' | 'loading' | 'ok' | 'offline'. you: 'none' (no run yet) | 'ranked' | 'unknown' (rank read failed)
   const B = {
+    game, // read by the lobby's drawn-board hook: the id of the board object actually drawn
     state: 'idle', n: 0, rows, you: 'none', youScore: '', youRank: '', reads: 0, rankReads: 0,
     refresh() {
       if (pending) return pending;
@@ -72,13 +77,19 @@ export function createLobbyBoard({ lb, game = 'starfall', playerId = async () =>
 
 // The board the lobby reads in the browser: the same choice Starfall's main.js makes (remote when configured or the
 // test-only ?lb= localhost override, else the local board), with the same 10 s read gate after a failure.
-export function browserBoard(search) {
+// game is required: no default, a missing or empty id throws.
+// The local board is read the way that game's own page reads it (LOCAL_VIEW): STACKLIGHT's page shows only runs of its
+// current major version (versionBoard), so its wall does too. Starfall's page reads the local board as it is.
+const LOCAL_VIEW = { stacklight: versionBoard };
+export function browserBoard(search, game) {
+  if (typeof game !== 'string' || !game) throw new Error('browserBoard: game id required');
   const store = localStorageAdapter('arcade:');
-  const local = createLeaderboard({ storage: store });
+  const raw = createLeaderboard({ storage: store });
+  const local = LOCAL_VIEW[game] ? LOCAL_VIEW[game](raw) : raw;
   let url = '';
   try { const v = new URLSearchParams(search).get('lb'); url = v && /^http:\/\/(127\.0\.0\.1|localhost)(:\d{1,5})?\/?$/.test(v) ? v : ''; } catch (e) { url = ''; }
   let picked = local;
-  try { picked = pickLeaderboard(local, url || REMOTE_LEADERBOARD_URL); } catch (e) { picked = local; }
+  try { picked = pickLeaderboard(local, url || REMOTE_LEADERBOARD_URL); } catch (e) { picked = local; } // remote: one board per major version on the server
   const lb = picked !== local ? gateReads(picked) : local;
-  return createLobbyBoard({ lb, playerId: () => store.get('playerId').catch(() => null) });
+  return createLobbyBoard({ lb, game, playerId: () => store.get('playerId').catch(() => null) });
 }

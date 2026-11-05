@@ -69,7 +69,8 @@ test('--band score: whole stdout pinned by sha256, exit 0, and docs/w52/w52d-ban
   assert.equal(r.status, 0, r.stdout + r.stderr);
   // re-pinned for GAME_VERSION 2.0 (D111, D113) from the CLI's own output after SCORE_BAND was re-frozen
   // re-pinned again (the lock timer never pauses in the air) after SCORE_BAND off p75 was re-frozen
-  assert.equal(sha(r.stdout), 'd3d37ce4e4203b7ce69da0ef043a39ead18f2870dbfc1ee2300682aa85351d5c', 'whole --band score stdout');
+  // re-pinned for GAME_VERSION 3.0 (D119 instant lock, D122) from the CLI after SCORE_BAND was re-frozen
+  assert.equal(sha(r.stdout), 'bd2c005b09b88de98c24f0ef322deea69347cd1016892524b16cbdcc3f4b6b07', 'whole --band score stdout');
   const doc = fs.readFileSync(new URL('../docs/w52/w52d-band.txt', import.meta.url), 'utf8');
   assert.equal(doc, r.stdout + 'exit 0\n', 'docs/w52/w52d-band.txt is the output plus its exit line');
 });

@@ -1,9 +1,9 @@
 // STACKLIGHT T1 test gaps, round 2, found missing by a second cold review.
 // New file only; nothing here edits an existing test. Expected values come from the STACKLIGHT design document
-// (B.6 lock delay with no resets since 2.0, B.6 hard drop in delay, B.7 GLOW), not from sim output.
+// (B.6 lock delay with no resets since 2.0 and 0 since 3.0, B.6 hard drop in delay, B.7 GLOW), not from sim output.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSim, PH_PLAY, EV_CLEAR } from '../games/stacklight/sim.js';
+import { createSim, PH_PLAY, EV_CLEAR, EV_LOCK } from '../games/stacklight/sim.js';
 import { ROT_H, ROT_V } from '../games/stacklight/defs.js';
 
 const mk = (t = {}, seed = 1) => createSim({ seed, mode: 'test', test: t });
@@ -17,88 +17,94 @@ function place(sim, col) { // tap to the pivot column, then hard drop (BAR stays
   sim.step(32);
 }
 const ROTATE = 64, HARD = 32, SOFT = 4;
-// B.6 doc constants, written out here on purpose: lock delay 32 (levels 1 to 16) and, since GAME_VERSION 2.0 (D111),
-// no lock resets: a piece locks exactly 32 frames after it first rests, whatever it does while resting
-const DELAY = 32, CAP = 0;
+// B.6 doc constants, written out here on purpose. Since GAME_VERSION 3.0 (D119) the lock delay is 0 (instant lock: a
+// piece locks at the end of the frame it first rests, after that frame's turn and move) and, since 2.0 (D111), there are
+// no lock resets. So a live piece never ends a frame resting, and no turn can add a frame.
+const DELAY = 0, CAP = 0;
+function runTo(t, words, upTo) { const s = mk(t); for (let f = 0; f < upTo; f++) s.step(words(f)); return s; }
+function lockOf(sim, word, max = 2000) { // steps word(frame) until a lock; returns [frame, lock event]
+  for (let i = 0; i < max; i++) { const f = sim.frame; sim.step(word(f)); const l = events(sim, EV_LOCK); if (l.length) return [l[0][1], l[0]]; }
+  return [-1, null];
+}
 
-// ---------- turns while resting never restart the lock delay ----------
-test('MED-1 rotate every 2nd frame on a resting BAR: no reset ever, it locks exactly 32 frames after it first rested', () => {
+// ---------- turns never restart or add a lock delay ----------
+test('MED-1 rotate every 2nd frame on a falling BAR: no reset ever, no frame ends resting, it locks on the frame it first rests', () => {
   const s = mk({ pieces: ['BAR', 'BAR'] });
   toPlay(s);
-  while (s.ctx.lockT === 0) s.step(SOFT); // soft drop until it rests on the floor
-  const rest = s.frame - 1; // the frame on which it first rested (lockT 1)
-  assert.equal(s.ctx.lockT, 1, 'it really rested');
-  assert.equal(s.ctx.resets, 0);
-  const spawned = s.ctx.spawned;
-  let restarts = 0, maxResets = 0, turns = 0, lockFrame = -1, prevLockT = s.ctx.lockT, prevRot = s.ctx.rot;
-  for (let i = 0; i < 13 * DELAY + 10 && lockFrame < 0; i++) {
-    const press = i % 2 === 0;
+  const spawned = s.ctx.spawned, start = s.frame;
+  let turns = 0, maxResets = 0, lockFrame = -1, prevRot = s.ctx.rot;
+  events(s, EV_LOCK);
+  for (let i = 0; i < 400 && lockFrame < 0; i++) {
     const f = s.frame;
-    s.step(press ? ROTATE : 0);
-    if (s.ctx.spawned !== spawned || s.ctx.phase !== PH_PLAY) { lockFrame = f; break; }
+    s.step((i % 2 === 0 ? ROTATE : 0) | SOFT);
+    const l = events(s, EV_LOCK);
+    if (l.length) { lockFrame = l[0][1]; assert.equal(lockFrame, f, 'the lock event is on this frame'); break; }
     if (s.ctx.rot !== prevRot) turns++;
     prevRot = s.ctx.rot;
-    if (s.ctx.lockT !== prevLockT + 1) restarts++;
-    prevLockT = s.ctx.lockT;
     maxResets = Math.max(maxResets, s.ctx.resets);
     assert.ok(s.ctx.resets <= CAP, 'no reset is ever spent (frame ' + f + ')');
+    assert.ok(!s.resting(), 'frame ' + f + ': the live piece is in the air (a resting frame would have locked)');
+    assert.equal(s.ctx.lockT, DELAY, 'frame ' + f + ': no delay is counting');
   }
   assert.ok(lockFrame >= 0, 'the piece locked, it did not stall');
-  assert.ok(turns >= 13, 'at least 13 successful turns while resting: ' + turns);
+  assert.ok(turns >= 13, 'at least 13 successful turns on the way down: ' + turns);
   assert.equal(maxResets, CAP, 'resets stay at 0');
-  assert.equal(restarts, 0, 'no turn restarted the delay: lockT went up by exactly 1 every frame');
-  assert.equal(lockFrame - rest, DELAY - 1, 'locks on the 32nd frame of rest, counting the landing frame as the first');
-  // log line for the card
-  console.log('rotate every 2nd frame on a resting BAR: locks at frame ' + (lockFrame - rest) + ' (after resting), resets ' + maxResets);
+  assert.equal(s.ctx.pType, 0, 'locked'); assert.equal(s.ctx.spawned, spawned, 'the same piece');
+  // the same piece with no turns: every shape's lowest cell is its pivot row, so it touches down on the same frame
+  const c = mk({ pieces: ['BAR', 'BAR'] }); toPlay(c);
+  const [cf] = lockOf(c, () => SOFT);
+  assert.equal(lockFrame, cf, 'the turns did not add a frame: it locks on its touchdown frame, as with no turn');
+  console.log('rotate every 2nd frame on a falling BAR: locks ' + (lockFrame - start) + ' frames after spawn, on its first resting frame, resets ' + maxResets);
 });
 
-test('MED-1 a successful turn on a resting piece does not restart the lock delay (lockT keeps counting)', () => {
-  const s = mk({ pieces: ['BAR'] });
-  toPlay(s);
-  while (s.ctx.lockT === 0) s.step(SOFT);
+test('MED-1 a successful turn on the touchdown frame does not delay the lock (six pieces, flat to upright)', () => {
+  // six BARs, each soft dropped straight down at the spawn column; on each one's touchdown frame a turn is pressed
+  const t = { pieces: ['BAR', 'BAR', 'BAR', 'BAR', 'BAR', 'BAR', 'BAR'] };
+  const plan = []; // [touchdown frame of piece k without the turn]
+  const words = (f) => (plan.includes(f) ? ROTATE : 0) | SOFT;
   for (let k = 0; k < 6; k++) {
-    const t0 = s.ctx.lockT, rot0 = s.ctx.rot;
-    assert.ok(t0 > 0 && t0 < DELAY - 3, 'still resting with delay left: ' + t0);
-    s.step(ROTATE); // a successful turn while resting
-    assert.notEqual(s.ctx.rot, rot0, 'the turn itself still happened');
+    // control: the same words so far, and no turn on this piece's touchdown frame
+    const c = runTo(t, words, plan.length ? plan[plan.length - 1] + 1 : 0);
+    const [T] = lockOf(c, (f) => SOFT);
+    assert.ok(T > 0, 'piece ' + k + ' locked');
+    const s = runTo(t, words, T);
+    const rot0 = s.ctx.rot;
+    assert.ok(s.ctx.pType !== 0 && !s.resting() && s.ctx.lockT === 0, 'piece ' + k + ': in the air one frame before');
+    events(s, EV_LOCK);
+    s.step(ROTATE | SOFT); // a successful turn on the touchdown frame
+    const l = events(s, EV_LOCK);
+    assert.equal(l.length, 1, 'piece ' + k + ': locked on the touchdown frame'); assert.equal(l[0][1], T);
+    assert.notEqual(s.ctx.rot, rot0, 'piece ' + k + ': the turn itself still happened');
+    assert.equal(s.ctx.rot, ROT_V, 'piece ' + k + ': spawned flat, turned upright');
+    assert.equal(l[0][3], 0, 'piece ' + k + ': no FLAT, so it locked upright (an upright BAR never fits)');
     assert.equal(s.ctx.resets, CAP, 'no reset spent');
-    assert.equal(s.ctx.lockT, t0 + 1, 'no restart');
-    s.step(0);
-    assert.equal(s.ctx.lockT, t0 + 2);
+    plan.push(T);
   }
 });
 
 // ---------- a failed turn does not reset (B.6: only a successful move or turn does) ----------
-function wellBar(extra = {}) { // V BAR resting at the bottom of a 1-wide well, rotate blocked both ways
-  const s = mk({ heights: [0, 0, 0, 6, 0, 6, 0, 0, 0], pieces: ['BAR'], ...extra });
-  toPlay(s);
-  s.step(ROTATE); // to V at the spawn column 4, in the air
-  assert.equal(s.ctx.rot, ROT_V); assert.equal(s.ctx.px, 4);
-  let guard = 0;
-  while (s.ctx.lockT === 0 && guard++ < 100) s.step(SOFT);
-  assert.equal(s.ctx.px, 4); assert.equal(s.ctx.rot, ROT_V); assert.equal(s.ctx.lockT, 1, 'resting on the well floor');
-  assert.equal(s.ctx.resets, 0);
-  return s;
-}
-test('LOW-2 a blocked turn on a resting V BAR in a 1-wide well: no reset spent, lock delay keeps counting, piece locks on time', () => {
-  const s = wellBar(), c = wellBar();
-  for (let i = 0; i < 4; i++) { s.step(0); c.step(0); }
-  const t0 = s.ctx.lockT;
-  assert.equal(t0, 5);
-  s.step(ROTATE); c.step(0);
-  assert.equal(s.ctx.rot, ROT_V, 'the turn was blocked');
-  assert.equal(s.ctx.px, 4);
+// V BAR falling into a 1-wide well (walls 6 high on both sides of column 4): every turn in it is blocked both ways
+function wellWord(f) { return f === 0 ? ROTATE : SOFT; }
+test('LOW-2 blocked turns on a V BAR in a 1-wide well, on the way down and on its touchdown frame: no reset spent, it locks on the same frame', () => {
+  const t = { heights: [0, 0, 0, 6, 0, 6, 0, 0, 0], pieces: ['BAR'] };
+  const c = mk(t);
+  const [T, lc] = lockOf(c, wellWord);
+  assert.equal(c.ctx.px, 4); assert.equal(c.ctx.rot, ROT_V); assert.equal(c.ctx.py, 0, 'control: locked upright on the well floor');
+  // the same piece pressing ROTATE every 2nd frame once it is inside the well (pivot row 5 or lower), the last press on
+  // the touchdown frame itself: every turn is blocked, nothing else changes
+  const s = mk(t); let n = 0;
+  const [L, ls] = lockOf(s, (f) => {
+    if (f === 0) return ROTATE;
+    if (s.ctx.pType && s.ctx.py <= 5 && f <= T && (T - f) % 2 === 0) { n++; return ROTATE | SOFT; }
+    return SOFT;
+  });
+  assert.ok(n >= 3, 'several turns pressed in the well: ' + n);
+  assert.equal(s.ctx.rot, ROT_V, 'every turn was blocked'); assert.equal(s.ctx.px, 4);
   assert.equal(s.ctx.resets, 0, 'no reset spent by a failed turn');
-  assert.equal(s.ctx.lockT, t0 + 1, 'lock delay not restarted');
-  // keep pressing every 2nd frame; both pieces must lock on the same frame (the press changes nothing)
-  let n = 0;
-  while (s.ctx.phase === PH_PLAY && n++ < 100) {
-    s.step(n % 2 ? 0 : ROTATE); c.step(0);
-    if (s.ctx.phase === PH_PLAY) { assert.equal(s.ctx.resets, 0); assert.equal(s.ctx.lockT, c.ctx.lockT); }
-  }
-  assert.notEqual(s.ctx.phase, PH_PLAY, 'locked');
+  assert.equal(L, T, 'locks on the same frame as with no presses');
   assert.equal(s.frame, c.frame);
   assert.equal(s.score, c.score); assert.equal(s.ctx.spawned, c.ctx.spawned);
+  assert.deepEqual(ls.slice(2), lc.slice(2), 'the same lock');
 });
 
 // ---------- hard drop pressed on the last frame of each delay is ignored, not buffered (B.6) ----------

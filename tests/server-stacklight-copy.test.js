@@ -69,7 +69,9 @@ function retimed(seed, mode, pl, inSeed, soft) {
   while (!sim.done) {
     const S = sim.ctx; let w = 0;
     if (S.phase === PH_PLAY) {
-      if (S.spawned !== planned) { planned = S.spawned; think = rnd(12); tries = 0; }
+      // think up to 19 frames (version 3.0; was 12): with instant lock and 12 every 3.0 retimed copy reached every placement
+      // (1.0 alike for input seeds 1 to 40), so none showed NEAR at work; a slower thinker misses a few at higher levels
+      if (S.spawned !== planned) { planned = S.spawned; think = rnd(20); tries = 0; }
       const [col, rot] = pl[S.spawned - 1] || [S.px, S.rot];
       if (think > 0) think--;
       else if (S.rot !== rot && tries < 3) { w = prev & 64 ? 0 : 64; tries++; }
@@ -126,7 +128,7 @@ test('STACKLIGHT signature: one event per scoring piece, keyed by pieceKey(piece
   for (let i = 0; i < sig.length; i += 2) keys.push(sig[i]);
   assert.ok(keys.every((k) => k % PIECE_STEP === 0), 'every key is a piece key');
   assert.ok(keys.every((k, i) => i === 0 || k > keys[i - 1]), 'one event per piece, increasing');
-  assert.ok(keys[keys.length - 1] / PIECE_STEP <= 400, 'keys count pieces, not frames (the run is 9,444 frames)');
+  assert.ok(keys[keys.length - 1] / PIECE_STEP <= 400, 'keys count pieces, not frames (the run is 15,520 frames)');
   assert.deepEqual(sig, resim(g.seed, g.mode, wordsOf(g.replay)).sig, 'this file records the signature as pass A does');
 });
 
@@ -135,7 +137,14 @@ test('piece tolerance is 0: the same events one piece later do not match at all'
   const sig = resim(FREE().seed, 'arcade', wordsOf(FREE().replay)).sig;
   const later = sig.map((x, i) => (i % 2 === 0 ? x + pieceKey(1) : x));
   assert.equal(similarity(sig, sig), 1);
-  assert.equal(similarity(sig, later), 0);
+  // 3.0: the 3.0 golden has 3 pieces that score with the same placement as the piece before them, so a shifted
+  // event can meet its equal neighbour (1 of 60 here); on 2.0 it had none. The same events never match one piece later:
+  // with every value made unique (the event's own index), the shifted copy matches nothing at all
+  const uniq = sig.map((x, i) => (i % 2 === 0 ? x : i)), uniqLater = later.map((x, i) => (i % 2 === 0 ? x : i));
+  assert.equal(similarity(uniq, uniq), 1);
+  assert.equal(similarity(uniq, uniqLater), 0);
+  let same = 0; for (let i = 3; i < sig.length; i += 2) if (sig[i] === sig[i - 2]) same++;
+  assert.ok(similarity(sig, later) <= same / (sig.length / 2), 'only an equal neighbour can match');
 });
 
 // ---------- the time-shift attack ----------

@@ -222,7 +222,7 @@ Every error is `{ ok: false, error: "<code>", message }`.
 
 | | Starfall | STACKLIGHT |
 |---|---|---|
-| Game id, version taken | `starfall`, its current `GAME_VERSION` | `stacklight`, `2.0` (board version `2`; 1.0 had lock resets, D111) |
+| Game id, version taken | `starfall`, its current `GAME_VERSION` | `stacklight`, `3.0` (board version `3`; 2.0 had a 32-frame lock delay, D119; 1.0 had lock resets, D111) |
 | Replay modes | `arcade` (free), `daily` | `arcade` (Free Play), `daily` (Daily Ridge). Never `test` (design B.7): a `test` header is `bad_mode` |
 | Frame cap | 216,000 | 216,000 (the sim itself ends the run there, LIGHTS OUT) |
 | Reserved input bits | no rule | bits 7 to 15 set on any frame: `bad_replay` (design C.2) |

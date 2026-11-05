@@ -86,8 +86,9 @@ export const SCORE_BAND = Object.freeze({
   seeds: '1-20', goodTier: 8, belowTier: 6, aboveTier: 9,
   // re-frozen for GAME_VERSION 2.0 (no lock resets). 1.0: off 384595 / 1813885, on 2384700 / 2869070
   // re-frozen again (the lock timer never pauses in the air): off p75 297425 became 296580
-  off: Object.freeze({ p75: 296580, p90: 364910 }),
-  on: Object.freeze({ p75: 394270, p90: 417830 })
+  // re-frozen for GAME_VERSION 3.0 (D119 instant lock, D122): 2.0 was off 296580 / 364910, on 394270 / 417830
+  off: Object.freeze({ p75: 178040, p90: 205495 }),
+  on: Object.freeze({ p75: 241870, p90: 272270 })
 });
 export const TAP_GAP = 4, HOLD_MIN = 4, MODEL_LIMIT = 400;
 // plan ahead: a held direction is started in the delay only if its charge (11 frames) is full by the spawn frame, so the
@@ -203,7 +204,7 @@ export class PieceModel {
     }
     if (!fits(grid, sh, this.c, this.r - 1)) {
       this.sub = 0; this.lockT++;
-      if (this.lockT >= lockDelayFor(this.level)) { this.locked = true; return true; }
+      if (this.lockT > lockDelayFor(this.level)) { this.locked = true; return true; } // D119: delay = frames after the first rest
     }
     return false;
   }
@@ -244,6 +245,9 @@ export function checkMove(move, tapGap) {
 // seenLock (default off so the default bot is unchanged): when it plans a piece that is already resting, the bot's
 // model starts from the lock time already used and the resets already spent (info().piece.lockT / resets: what a player
 // sees as "it has been sitting there"), not from a fresh piece. Off, the model can think it has more time than it has.
+// GAME_VERSION 3.0 (D119): it also starts from the piece's sub-row counter (how far into the next row it has
+// fallen). With instant lock the landing frame is the lock frame, so a model that starts the fall at 0 lands a frame
+// late and misses; that is the bot's planning, not the model's physics, which is what seenLock is for.
 export function createBot({ seed, tier = 9, reaction, mistakePct, planAhead = false, move = 'hold', tapGap = TAP_GAP, seenLock = false }) {
   checkMove(move, tapGap);
   if (reaction === undefined) reaction = reactionFor(tier);
@@ -280,7 +284,7 @@ export function createBot({ seed, tier = 9, reaction, mistakePct, planAhead = fa
       }
       this.lastCol = p.col; this.lastRot = p.rot; this.linesSeen = info.lines;
       if (this.wait > 0) { this.wait--; return NEUTRAL; }
-      if (this.ctl === null) this.ctl = this.plan(sim.grid, p.type === 'BAR' ? BAR : PLUS, p.col, p.row, p.rot, info.level, 0, seenLock ? p : null);
+      if (this.ctl === null) this.ctl = this.plan(sim.grid, p.type === 'BAR' ? BAR : PLUS, p.col, p.row, p.rot, info.level, 0, seenLock ? { lockT: p.lockT, resets: p.resets, sub: sim.ctx.sub } : null);
       if (++this.planFrames > MODEL_LIMIT) return IN_HARD_PRESS; // a plan that has not finished in 400 frames is dropped
       return this.ctl.next(p.col, p.rot);
     },
@@ -334,7 +338,7 @@ export function createBot({ seed, tier = 9, reaction, mistakePct, planAhead = fa
         const ctl = new Controller(type, tc, tr, mv, gap);
         model.grid.set(grid);
         model.reset(type, col, row, rot, g, level, pre);
-        if (seen !== null) { model.lockT = seen.lockT; model.resets = seen.resets; }
+        if (seen !== null) { model.lockT = seen.lockT; model.resets = seen.resets; model.sub = seen.sub; }
         let locked = false, arrive = -1;
         for (let t = 0; t < MODEL_LIMIT; t++) {
           locked = model.step(ctl.next(model.c, model.rot, model.pre));
@@ -411,7 +415,7 @@ export function checkRules(rules) {
   if (typeof rules !== 'object') throw new Error('rules: an object or null');
   for (const k of Object.keys(rules)) if (!['gravity', 'lockDelay', 'resets', 'linesPerLevel'].includes(k)) throw new Error('rules: unknown key ' + k);
   if (rules.gravity !== undefined && !intsIn(rules.gravity, 20, 1, 5376)) throw new Error('rules.gravity: 20 integers 1 to 5376 (levels 1 to 20)');
-  if (rules.lockDelay !== undefined && !intsIn(rules.lockDelay, 20, 1, 255)) throw new Error('rules.lockDelay: 20 integers 1 to 255 (levels 1 to 20)');
+  if (rules.lockDelay !== undefined && !intsIn(rules.lockDelay, 20, 0, 255)) throw new Error('rules.lockDelay: 20 integers 0 to 255 (levels 1 to 20)');
   if (rules.resets !== undefined && !(Number.isInteger(rules.resets) && rules.resets >= 0 && rules.resets <= 99)) throw new Error('rules.resets: an integer 0 to 99');
   if (rules.linesPerLevel !== undefined && !(Number.isInteger(rules.linesPerLevel) && rules.linesPerLevel >= 1 && rules.linesPerLevel <= 99)) throw new Error('rules.linesPerLevel: an integer 1 to 99');
   if ((rules.lockDelay !== undefined || rules.resets !== undefined || rules.linesPerLevel !== undefined) && !rulesHookActive())

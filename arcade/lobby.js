@@ -20,7 +20,7 @@ import { MACHINES, START_INDEX } from './machines.js';
 import { ARCADE_NAME, ARCADE_TAGLINE } from './brand.js';
 import { createNav, dollyPose, coinDoorPose, DOLLY_TICKS, STEP_TICKS, LOBBY_FOC,
   floorPose, floorX, FLOOR_SPACING, CAB_ANGLE, WALL_Z, FLOOR_EYE_Z, SWING_TICKS, SWING_SHUT, swingAngle, slideK, slideL, slideR, rowShift, rowDX, rowPose } from './lobby-cam.js';
-import { browserBoard } from './lobby-board.js';
+import { browserBoard, createLobbyBoard } from './lobby-board.js';
 const PLAY_HINT = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) ? 'TAP: PLAY' : 'ENTER: PLAY';
 
 const W = 400, H = 300, CX = W / 2, N = MACHINES.length;
@@ -368,8 +368,28 @@ function layout(al, pos) {
 }
 
 // ---------- the wall board: one read when the lobby opens (and when the player comes back to it) ----------
-const board = browserBoard(typeof location === 'object' ? location.search : '');
-board.refresh();
+// one board per playable cabinet, each read with that cabinet's own game id. A cabinet that is not playable gets an
+// empty board that is never read (its COMING SOON rows stay blank).
+const SEARCH = typeof location === 'object' ? location.search : '';
+const boards = MACHINES.map(m => (m.playable ? browserBoard(SEARCH, m.id) : createLobbyBoard({ lb: null, game: m.id })));
+const boardById = id => { const i = MACHINES.findIndex(m => m.id === id); return i < 0 ? null : boards[i]; };
+const board = boardById('starfall'); // the old hooks (board, refreshBoard, reset) keep meaning STARFALL's wall
+// Reads are lazy: a cabinet's board is read the first time it is selected, and again the first time it is selected after
+// a return from a game (stale[i]). The opening read is the start cabinet's, so one visit costs one read per cabinet
+// looked at, and none while idle (the flag is cleared when the read goes out).
+const stale = boards.map(() => true);
+// which board each cabinet's wall really drew on the last frame (LOBBY.drawnBoard / drawnTop, read only). drawBoard
+// sets them from the board object it draws from (that object's own game id, as a machine index) and from the row-1 entry
+// it hands to the text call, so a draw that reads the wrong board shows up here. Cleared every frame; no allocation.
+for (const b of boards) b.slot = MACHINES.findIndex(m => m.id === b.game);
+const drawnSlot = new Int8Array(N).fill(-1);
+const drawnTop = new Array(N).fill(null); // the name and score strings drawn in row 1 (references, never built per frame)
+const drawnTopScore = new Array(N).fill(null);
+function ensureBoard(i) {
+  if (!stale[i] || !MACHINES[i].playable) return null;
+  stale[i] = false; return boards[i].refresh();
+}
+ensureBoard(START_INDEX);
 
 let starfallLoaded = false;
 // Starfall calls this (Esc / Backspace) after it has stopped its own loop, input and audio. Back on the Starfall cabinet:
@@ -665,7 +685,7 @@ let tgX0 = 0, tgX1 = 0, tgY0 = 0, tgY1 = 0;
 function render(al) {
   if (tgX1 === 0) { const hw = Math.max(textW(ARCADE_TAGLINE, 1), WM_MAXW) / 2 + 8; tgX0 = CX - hw; tgX1 = CX + hw; tgY0 = wmBottom - 5; tgY1 = wmBottom + 17; }
   fpsT[fpsN++ & 255] = performance.now();
-  posterDrawn.fill(0); tubeSoon.fill(0);
+  posterDrawn.fill(0); tubeSoon.fill(0); drawnSlot.fill(-1); drawnTop.fill(null); drawnTopScore.fill(null);
   if (gfx.lost) return;
   if (rotate.shown()) { rotate.draw(''); return; } // rotate screen
   LIM[0] = 20 + gfx.view.padX; LIM[1] = 20 + gfx.view.padX; // the room fills the width (see the end of this function)
@@ -961,7 +981,8 @@ function drawPoster(i, a) {
 // the row reveal: restarts whenever you arrive at a machine or its board's answer comes in
 let revT = 0, revKey = -2;
 function revealTick() {
-  const rk = nav.moving ? -1 : nav.index * 8 + (board.state === 'ok' ? 1 : board.state === 'offline' ? 2 : 0);
+  if (!nav.moving) ensureBoard(nav.index);
+  const rk = nav.moving ? -1 : nav.index * 8 + (boards[nav.index].state === 'ok' ? 1 : boards[nav.index].state === 'offline' ? 2 : 0);
   if (rk !== revKey) { revKey = rk; revT = 0; } else if (revT < 1000) revT++;
 }
 const rowChars = r => clamp((revT - 6 - r * 5) * 0.9, 0, 40);
@@ -994,12 +1015,14 @@ function drawBoard(i, fa) {
   bline(x + w - 28 * k, y + 28 * k, x + w - 8 * k, y + 28 * k, 2.2 * k, 0.6 * k, VIOLET, 0.5 * a);
   const sc = ROW_SC * k, top = y + 35 * k, rh = ROW_H * k, xr = x + 17 * k, xn = x + 22 * k, xs = x + w - 8 * k, foot = y + 139 * k;
   bline(x + 8 * k, foot - 4 * k, x + w - 8 * k, foot - 4 * k, 2.2 * k, 0.6 * k, g, 0.5 * a);
+  const B = boards[i];
+  drawnSlot[i] = B.slot;
   if (!MACHINES[i].playable) {
     // the COMING SOON poster across the middle of the board; the empty rows show only around it
     POT[0] = x + PO_CU * k; POT[1] = y + PO_CV * k; POT[2] = k;
     for (let r = 0; r < 10; r++) {
       const n = rowChars(r), ry = top + r * rh;
-      if (!rankCovered(xr - textW(board.rows[r].rank, sc), xr, ry, 7 * sc)) ftext(board.rows[r].rank, xr, ry, FAINT, sc, 'r', 0.6 * a, n, 0);
+      if (!rankCovered(xr - textW(B.rows[r].rank, sc), xr, ry, 7 * sc)) ftext(B.rows[r].rank, xr, ry, FAINT, sc, 'r', 0.6 * a, n, 0);
       if (n > 0) {
         const x0 = xn + 2 * k, x1 = x0 + (xs - x0) * Math.min(1, n / 8), m = Math.max(1, Math.round((x1 - x0) / (4 * k)));
         for (let q = 0; q <= m; q++) { const px = x0 + (x1 - x0) * q / m; if (!underPoster(px, ry + 3 * k)) dot(px, ry + 3 * k, 0.5 * k, FAINT[0], FAINT[1], FAINT[2], 0.45 * a); }
@@ -1009,7 +1032,6 @@ function drawBoard(i, fa) {
     drawPoster(i, a);
     return;
   }
-  const B = board;
   if (B.state === 'ok') {
     for (let r = 0; r < 10; r++) {
       const row = B.rows[r], ry = top + r * rh, n = rowChars(r);
@@ -1018,6 +1040,7 @@ function drawBoard(i, fa) {
       const cyc = r === 0 && !row.me ? time * 9 : 0;
       if (row.me) for (let q = 0; q < 3; q++) dot(x + w * (q + 0.5) / 3, ry + 3 * sc, 14 * k, 1, .75, .25, 0.05 * a * (0.6 + 0.4 * Math.sin(time * 5)));
       ftext(row.rank, xr, ry, col, sc, 'r', a, n, cyc); ftext(row.name, xn, ry, col, sc, 'l', a, n, cyc); ftext(row.score, xs, ry, col, sc, 'r', a, n, cyc);
+      if (r === 0) { drawnTop[i] = row.name; drawnTopScore[i] = row.score; }
       // the champion row sparkles
       if (r === 0 && n >= 9) for (let q = 0; q < 4; q++) {
         const ph = (time * 0.9 + q * 0.27) % 1, sx = x + 8 * k + ((q * 37 + ((time * 0.9 + q * 0.27) | 0) * 53) % 120) / 120 * (w - 16 * k);
@@ -1063,15 +1086,25 @@ function resetToLobby() {
   mode = 'lobby'; swingT = 0; swingHold = -1; dollyT = 0; dollyHold = -1; skipFlag = false; handoffReady = false; importStarted = false;
   selQ = false; queued = 0; tapPending = false; swipePending = 0; latch = 0; flashT = 0; nav.hold(null); revKey = -2;
   leaveT = 0; leaveUrl = ''; leaveReady = false;
-  const p = board.refresh();
+  stale.fill(true);
+  const p = ensureBoard(nav.index);
   loop.start();
   return p;
 }
 
 // ---------- test hooks ----------
 window.LOBBY = {
-  // the return path: see resetToLobby
-  reset() { return Promise.resolve(resetToLobby()).then(() => board.snapshot()); },
+  // the return path: see resetToLobby. Resolves to the SELECTED cabinet's board snapshot (on STARFALL, as in the
+  // game, that is STARFALL's), read again when it is a playable cabinet.
+  reset() { const b = boards[nav.index]; return Promise.resolve(resetToLobby()).then(() => b.snapshot()); },
+  // the game id of the board cabinet i's wall drew on the last frame (null if it was not drawn), and the name and
+  // score it drew in row 1 (null while the rows are not shown). Set inside drawBoard from the object it draws.
+  drawnBoard(i) { const s = drawnSlot[i | 0]; return s >= 0 ? MACHINES[s].id : null; },
+  drawnTop(i) { const j = i | 0; return drawnTop[j] == null ? null : { name: drawnTop[j], score: drawnTopScore[j] }; },
+  // every playable cabinet's own wall board, keyed by machine id (null for an unknown id)
+  boardOf(id) { const b = boardById(id); return b ? b.snapshot() : null; },
+  boards() { const o = {}; for (let i = 0; i < N; i++) o[MACHINES[i].id] = boards[i].snapshot(); return o; },
+  refreshBoardOf(id) { const b = boardById(id); const j = MACHINES.findIndex(m => m.id === id); if (j >= 0) stale[j] = false; return b ? b.refresh().then(() => b.snapshot()) : Promise.resolve(null); },
   info() {
     return {
       mode, index: nav.index, id: MACHINES[nav.index].id, ids: MACHINES.map(m => m.id), names: MACHINES.map(m => m.name),

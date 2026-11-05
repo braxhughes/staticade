@@ -3,7 +3,7 @@
 // Pure data plus streamSeed: no DOM, no wall clock, no unseeded randomness, no trig.
 import { seedFromString } from '../../engine/rng.js';
 
-export const GAME_ID = 'stacklight', GAME_VERSION = '2.0';
+export const GAME_ID = 'stacklight', GAME_VERSION = '3.0';
 
 // B.1 board: 9 columns x 18 visible rows (0 to 17, row 0 at the bottom) plus a 3-row spawn zone (18 to 20)
 export const COLS = 9, ROWS = 18, SPAWN_ROWS = 3, TOTAL_ROWS = ROWS + SPAWN_ROWS, CELLS = COLS * TOTAL_ROWS;
@@ -26,13 +26,14 @@ export const PREVIEW = 3, SHORT_SIGHT_PREVIEW = 1;
 // B.6 timings, in sim frames at 60 Hz
 export const AUTO_REPEAT_FIRST = 11, AUTO_REPEAT_EVERY = 2;
 export const ENTRY_DELAY = 8, CLEAR_DELAY = 20;
-// D111 (GAME_VERSION 2.0): no lock resets; moves and turns while resting still work but never restart the delay.
-// D117: the delay starts on the first resting frame and then counts every frame, in the air too; the piece locks on its
-// first resting frame with lockDelayFor(level) frames counted (so exactly that many after it first rests if it never
-// leaves the ground, or on landing if the delay ran out in the air). A piece lives at most 842 frames from spawn
-// at level 1 (B.6 has the exact formula: a resting frame can throw away a partial row of fall). Kept as a constant so the bot's rule hook can vary it.
+// D111 (GAME_VERSION 2.0): no lock resets. Kept as a constant so the bot's rule hook can vary it.
+// D119 (GAME_VERSION 3.0): instant lock. lockDelayFor(level) is the number of frames a piece may wait AFTER its first
+// resting frame before it locks; it is 0 at every level, so a piece locks on the first frame it rests (the touchdown
+// frame), at the end of that frame, after that frame's input and gravity. A piece lives at most ceil(18 x 256 / G)
+// frames from its spawn frame (B.6). The sim still counts lockT (resting frames, the first one counts as 1) and locks
+// when lockT > lockDelayFor(level), so the bot's rule hook can measure other delays.
 export const LOCK_RESETS = 0;
-export function lockDelayFor(level) { return level >= 20 ? 16 : level >= 17 ? 24 : 32; }
+export function lockDelayFor(level) { return 0; }
 // gravity G per level, in 1/256 row per frame (index = level; index 0 unused)
 export const GRAVITY = [0, 6, 8, 10, 13, 16, 20, 26, 32, 40, 51, 64, 80, 102, 128, 160, 204, 256, 384, 640, 5376];
 export const SUB_ROW = 256;

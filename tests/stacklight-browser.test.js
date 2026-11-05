@@ -189,11 +189,13 @@ test('pause then resume: presses made while paused never fire, a press after res
 test('browser stateHash equals a Node re-sim of the browser replay after about 2,000 frames of random keys', { timeout: 120000 }, async () => {
   const { ctx, page, problems } = await open();
   try {
-    await page.evaluate(() => SL.start(424242));
+    // Setup only: seed 6 (was 424242). On 3.0 (instant lock) this key mix topped out at 1,332 to 1,976 frames
+    // from 424242; from seed 6 it lasted 2,510 to 3,156 frames in 4 runs with the 2,000 cap lifted
+    await page.evaluate(() => SL.start(6));
     let s = 0x2545f491;
     const rnd = n => { s = (Math.imul(s, 1103515245) + 12345) >>> 0; return (s >>> 8) % n; };
     // a gentler mix so the run reaches 2,000 frames instead of topping out. Random presses and held keys as
-    // before (moves, turns, soft drop, auto-repeat), plus a steer: 3 actions in 10 move the piece toward a target column
+    // before (moves, turns, soft drop, auto-repeat), plus a steer: 9 actions in 10 move the piece toward a target column
     // that changes per piece (0, 4, 8, 3, 7, 2, 6, 1, 5: spread across the board) and hard drop it there, at most once a
     // second. Every key still goes through real key events; the hard drop bit is still exercised.
     const keys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyA', 'KeyD', 'KeyX'];
@@ -203,7 +205,9 @@ test('browser stateHash equals a Node re-sim of the browser replay after about 2
       const i = await page.evaluate(() => SL.info());
       if (i.done || i.frame >= 2000) break;
       if (held.size && rnd(2)) { for (const k of held) await page.keyboard.up(k); held.clear(); }
-      if (rnd(10) < 3) {
+      // The steer fires 9 in 10 (was 3 in 10). With the cap lifted, 20 runs at 8 in 10 reached 2,166 at worst;
+      // 20 at 9 in 10 reached 4,540 at worst
+      if (rnd(10) < 9) {
         if (i.piece) {
           const target = (i.spawned * 4) % 9;
           if (i.piece.col < target) await page.keyboard.press('ArrowRight');

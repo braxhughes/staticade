@@ -292,7 +292,7 @@ test('M2: /board and /rank refuse unknown games, versions, seasons and days befo
     ['/board?game=starfall&board=season&key=-999999', 'bad_board'], ['/board?game=starfall&board=season&key=-1', 'bad_board'],
     ['/board?game=starfall&board=season&key=4', 'bad_board'], ['/board?game=starfall&board=daily&key=1970-01-01', 'bad_board'],
     ['/board?game=starfall&board=daily&key=2026-10-29', 'bad_board'], [`/board?game=starfall&board=daily&key=${after}`, 'bad_board'],
-    [`/board?game=${SL_ID}&version=4`, 'bad_version'],
+    [`/board?game=${SL_ID}&version=5`, 'bad_version'],
     ['/rank?game=zz-not-a-game&playerId=whatever-1234', 'bad_game'], ['/rank?game=starfall&playerId=whatever-1234&version=9999', 'bad_version'],
   ]) await want(q, 400, code);
   for (const q of ['/board?game=starfall', '/board?game=starfall&version=2.5', '/board?game=starfall&version=1', '/board?game=starfall&version=3',

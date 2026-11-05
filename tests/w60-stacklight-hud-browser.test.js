@@ -158,7 +158,10 @@ for (const [w, h, phone] of SIZES) {
     try {
       const L = await page.evaluate(() => SL.hudLayout());
       // play, at level 20 with GLOW lit and a long best
-      await page.evaluate(() => { SL.start(1); SL.setLines(190); SL.setHeights([8, 8, 8, 8, 0, 8, 8, 8, 8]); SL.place(3, 0); SL.place(3, 0); });
+      // Setup only: start at lines 150 (level 19, was 190). The two places clear 2 lines, so level 20 is drawn as
+      // before. On 3.0 a level 20 piece locks on its spawn frame, so from 190 the run topped out during the clear frames and
+      // P had nothing to pause; from 150 the third place is a real 4-line clear and the run lasts 98+ frames past it.
+      await page.evaluate(() => { SL.start(1); SL.setLines(150); SL.setHeights([8, 8, 8, 8, 0, 8, 8, 8, 8]); SL.place(3, 0); SL.place(3, 0); });
       let c = await frame(page, 2);
       panels(c, L, `${size} play`);
       clear(c, `${size} play`);

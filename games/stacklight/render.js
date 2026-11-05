@@ -337,30 +337,93 @@ export function createRenderer({ gfx, text: textOut, ui }) {
       dot(x, y, P[o + 7], col[0] + (1 - col[0]) * w, col[1] + (1 - col[1]) * w, col[2] + (1 - col[2]) * w, k);
     }
   }
+  // Popups make (almost) no heap numbers, in any V8 tier. The first popup of a run reaches code paths with no
+  // type feedback yet, so V8 drops popups back to unoptimised code, where a double (12 bytes) is made for every non-integer
+  // read from a float array and every double result. So:
+  //   - each frame, a slot is checked against the copy kept of it by its bits only: fx.pop is copied into PF (a Float32Array
+  //     made here, so nothing is built during play) and read back as 16-bit halves through PU, a Uint16Array over PF's
+  //     buffer (every value read is a small integer). Only a new popup is read as floats, once: kind, born and life go to
+  //     Int32Arrays (PI), x (PX), life * 0.6 and life * 0.4 (PL6, PL4) are made once and kept, and so is y after the
+  //     24-frame rise (PY). PX, PY, PL6 and PL4 are tagged arrays (filled with null first, so their elements stay tagged).
+  //   - on screen or not is decided on integers (TN[0], the integer frame, set in drawRun): t = TN[0] - born + alpha with
+  //     alpha in [0, 1), so tf < 0 means t < 0 except tf = -1, and tf >= life means t >= life; only those two edge cases
+  //     run the double test from before. The same goes for "risen" (t >= 24) and "solid" (t < life * 0.6).
+  //   - t (and T[0]) is read only when a value drawn needs it: y while rising, the alpha while fading. Otherwise the alpha
+  //     is the literal 1 or 0.9 (what 1 and 1 * 0.9 were).
+  // Each case is its own text() call with the reused value or literal written in it (a ?: between a literal and a computed
+  // double would make one double again). The values drawn are exactly the ones computed before.
+  const TN = new Int32Array(1), PB = new Uint16Array(POPS * 10), PI = new Int32Array(POPS * 4); // PI: kind, born, life, lane
+  const PX = new Array(POPS).fill(null), PY = new Array(POPS).fill(null), PL6 = new Array(POPS).fill(null), PL4 = new Array(POPS).fill(null);
+  const PF = new Float32Array(POPS * 5), PU = new Uint16Array(PF.buffer);
+  // 1 when slot i is on screen this frame (the old test: 0 <= t <= life)
+  function popOn(i, f) {
+    const q = i * 4, tf = f - PI[q + 1], life = PI[q + 2];
+    if (PI[q] === 0 || tf < -1 || tf > life) return 0;
+    if (tf >= 0 && tf < life) return 1;
+    const t = T[0] - PI[q + 1];
+    return t < 0 || t > life ? 0 : 1;
+  }
   function popups(fx) {
-    const now = T[0], p = fx.pop;
+    const f = TN[0], p = fx.pop;
+    PF.set(p);
     for (let i = 0; i < POPS; i++) {
-      const o = i * 5, kind = p[o];
-      if (kind === 0) continue;
-      const t = now - p[o + 3], life = p[o + 4];
-      if (t < 0 || t > life) continue;
-      const a = t < life * 0.6 ? 1 : 1 - (t - life * 0.6) / (life * 0.4), rise = Math.min(t, 24) * 0.35;
+      const u = i * 10;
+      let same = true;
+      for (let h = 0; h < 10; h++) if (PB[u + h] !== PU[u + h]) { same = false; break; }
+      if (same) continue;
+      for (let h = 0; h < 10; h++) PB[u + h] = PU[u + h];
+      // a new popup in this slot (or a cleared one): read it once
+      const o = i * 5, q = i * 4, kind = p[o];
+      PI[q] = kind; PI[q + 1] = p[o + 3]; PI[q + 2] = p[o + 4]; PI[q + 3] = kind === POP_POINTS && p[o + 1] > BX1 ? 1 : 0;
+      PX[i] = p[o + 1]; PY[i] = null; PL6[i] = p[o + 4] * 0.6; PL4[i] = p[o + 4] * 0.4;
+    }
+    for (let i = 0; i < POPS; i++) {
+      if (popOn(i, f) === 0) continue;
+      const o = i * 5, q = i * 4, kind = PI[q], born = PI[q + 1], lane = PI[q + 3] === 1, tf = f - born;
+      // risen: t >= 24; solid: t < life * 0.6 (PL6). Integers settle them except when tf is the integer just below.
+      const risen = tf >= 24 ? true : tf < 23 ? false : T[0] - born >= 24;
+      const solid = tf + 1 < PL6[i] ? true : tf >= PL6[i] ? false : T[0] - born < PL6[i];
       const str = fx.popStr[i];
-      if (kind === POP_POINTS && p[o + 1] > BX1) {
+      // rise = Math.min(t, 24) * 0.35 (8 units, 3 in the lane: / 8); after the rise it is 24 * 0.35 for good
+      if (risen && !lane && PY[i] === null) {
+        const rise = 24 * 0.35;
+        PY[i] = kind === POP_FIT ? p[o + 2] - 10 - rise : kind === POP_LEVEL ? p[o + 2] - rise * 0.3 : p[o + 2] - rise;
+      }
+      if (lane) {
         // a clear's points (render/fx.js puts them right of the well) go in the right panel's lane under BEST, never on a
         // frame line or another string: newest on top, each older one 11 units lower, at most 4; a 3-unit rise instead of 8
         let k = 0;
         for (let j = 0; j < POPS; j++) {
-          const q = j * 5;
-          if (j === i || p[q] !== POP_POINTS || !(p[q + 1] > BX1)) continue;
-          const tj = now - p[q + 3];
-          if (tj < 0 || tj > p[q + 4]) continue;
-          if (p[q + 3] > p[o + 3] || (p[q + 3] === p[o + 3] && j > i)) k++;
+          if (j === i || PI[j * 4] !== POP_POINTS || PI[j * 4 + 3] !== 1 || popOn(j, f) === 0) continue;
+          const bj = PI[j * 4 + 1];
+          if (bj > born || (bj === born && j > i)) k++;
         }
-        if (k < LANE_N) text(str, HX_MID, LANE_Y + k * LANE_DY + 3 - Math.min(t, 24) / 8, C_TOP, 1, 'c', a * 0.9);
-      } else if (kind === POP_FIT) text(str, p[o + 1], p[o + 2] - 10 - rise, C_WHITE, 1.4, 'c', a);
-      else if (kind === POP_POINTS) text(str, p[o + 1], p[o + 2] - rise, C_TOP, 1, 'c', a * 0.9);
-      else if (kind === POP_LEVEL) text(str, p[o + 1], p[o + 2] - rise * 0.3, C_PLUS, 2, 'c', a);
+        if (k >= LANE_N) continue;
+        // after the rise y is LANE_Y + k * LANE_DY, a whole number (a small integer is never boxed)
+        if (risen) {
+          if (solid) text(str, HX_MID, LANE_Y + k * LANE_DY + 3 - 24 / 8, C_TOP, 1, 'c', 0.9);
+          else text(str, HX_MID, LANE_Y + k * LANE_DY + 3 - 24 / 8, C_TOP, 1, 'c', (1 - (T[0] - born - PL6[i]) / PL4[i]) * 0.9);
+        } else if (solid) text(str, HX_MID, LANE_Y + k * LANE_DY + 3 - (T[0] - born) / 8, C_TOP, 1, 'c', 0.9);
+        else text(str, HX_MID, LANE_Y + k * LANE_DY + 3 - (T[0] - born) / 8, C_TOP, 1, 'c', (1 - (T[0] - born - PL6[i]) / PL4[i]) * 0.9);
+      } else if (kind === POP_FIT) {
+        if (risen) {
+          if (solid) text(str, PX[i], PY[i], C_WHITE, 1.4, 'c', 1);
+          else text(str, PX[i], PY[i], C_WHITE, 1.4, 'c', 1 - (T[0] - born - PL6[i]) / PL4[i]);
+        } else if (solid) text(str, PX[i], p[o + 2] - 10 - (T[0] - born) * 0.35, C_WHITE, 1.4, 'c', 1);
+        else text(str, PX[i], p[o + 2] - 10 - (T[0] - born) * 0.35, C_WHITE, 1.4, 'c', 1 - (T[0] - born - PL6[i]) / PL4[i]);
+      } else if (kind === POP_POINTS) {
+        if (risen) {
+          if (solid) text(str, PX[i], PY[i], C_TOP, 1, 'c', 0.9);
+          else text(str, PX[i], PY[i], C_TOP, 1, 'c', (1 - (T[0] - born - PL6[i]) / PL4[i]) * 0.9);
+        } else if (solid) text(str, PX[i], p[o + 2] - (T[0] - born) * 0.35, C_TOP, 1, 'c', 0.9);
+        else text(str, PX[i], p[o + 2] - (T[0] - born) * 0.35, C_TOP, 1, 'c', (1 - (T[0] - born - PL6[i]) / PL4[i]) * 0.9);
+      } else if (kind === POP_LEVEL) {
+        if (risen) {
+          if (solid) text(str, PX[i], PY[i], C_PLUS, 2, 'c', 1);
+          else text(str, PX[i], PY[i], C_PLUS, 2, 'c', 1 - (T[0] - born - PL6[i]) / PL4[i]);
+        } else if (solid) text(str, PX[i], p[o + 2] - (T[0] - born) * 0.35 * 0.3, C_PLUS, 2, 'c', 1);
+        else text(str, PX[i], p[o + 2] - (T[0] - born) * 0.35 * 0.3, C_PLUS, 2, 'c', 1 - (T[0] - born - PL6[i]) / PL4[i]);
+      }
     }
   }
 
@@ -428,7 +491,7 @@ export function createRenderer({ gfx, text: textOut, ui }) {
   function drawRun(sim, fx, o) {
     hudSync(sim, o.best);
     const now = sim.frame - 1 + T[1];
-    T[0] = now; T[2] = 0;
+    T[0] = now; T[2] = 0; TN[0] = sim.frame - 1;
     fx.age(sim.frame - 1);
     lkSim = sim; tbN[0] = 0;
     sockets();

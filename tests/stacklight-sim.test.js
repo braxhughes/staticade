@@ -241,19 +241,23 @@ test('turns: BAR about its bottom cell, V to H kicks +1 then -1 at the walls, bl
   b.step(64); for (let i = 0; i < 4; i++) { b.step(18); b.step(0); }
   assert.equal(b.ctx.px, 8);
   b.step(64); assert.equal(b.ctx.rot, ROT_H); assert.equal(b.ctx.px, 7, 'kicked -1 off the right wall');
-  // blocked: upright BAR in a 1-wide well 3 deep
+  // blocked: upright BAR in a 1-wide well 3 deep. Since 3.0 (D119, instant lock) a piece never stays resting, so the
+  // blocked turn is tried in the air inside the well (pivot row 1, the walls at rows 0 to 2 on both sides)
   const c = mk({ heights: [3, 3, 3, 0, 3, 3, 3, 3, 3] });
   c.step(64); c.step(9);
-  while (c.ctx.lockT === 0) c.step(4);
+  while (c.ctx.py > 1) c.step(4);
+  assert.ok(c.ctx.pType !== 0 && !c.resting(), 'in the air inside the well');
   const py = c.ctx.py; events(c, EV_TURN);
   c.step(64);
   assert.equal(c.ctx.rot, ROT_V); assert.equal(c.ctx.py, py);
   assert.deepEqual(events(c, EV_TURN).map(e => e[2]), [0], 'a blocked turn');
-  // PLUS: no turn and no lock reset
+  // PLUS: no turn and no lock reset; in the air the lock count does not run (3.0: it counts only the resting frame)
   const d = mk({ pieces: ['PLUS'] });
-  while (d.ctx.lockT < 5) d.step(4);
+  for (let i = 0; i < 5; i++) d.step(4);
+  events(d, EV_TURN);
   d.step(64);
-  assert.equal(d.ctx.rot, ROT_H); assert.equal(d.ctx.resets, 0); assert.equal(d.ctx.lockT, 6);
+  assert.equal(d.ctx.rot, ROT_H); assert.equal(d.ctx.resets, 0); assert.equal(d.ctx.lockT, 0);
+  assert.deepEqual(events(d, EV_TURN).map(e => e[2]), [2], 'PLUS: the no-turn event');
 });
 
 test('gravity: level 1 drops a row every 256 / 6 frames; soft drop at least 128; level 20 is the instant beam', () => {
@@ -265,7 +269,8 @@ test('gravity: level 1 drops a row every 256 / 6 frames; soft drop at least 128;
   b.step(4); assert.equal(b.ctx.py, 18); b.step(4); assert.equal(b.ctx.py, 17); b.step(4); b.step(4); assert.equal(b.ctx.py, 16);
   const c = mk({ lines: 152 }); // level 20
   assert.equal(c.level, 20);
-  c.step(0); assert.equal(c.ctx.py, 0); assert.equal(c.ctx.lockT, 1, 'lands on its spawn frame');
+  events(c, EV_LOCK); c.step(0); assert.equal(c.ctx.py, 0); assert.equal(c.ctx.pType, 0, 'lands on its spawn frame and, with instant lock (3.0), locks on it');
+  assert.deepEqual(events(c, EV_LOCK).map(e => e[1]), [0], 'the lock event is on frame 0, the spawn frame');
   const d = mk({ lines: 128 }); // level 17: one row a frame
   d.step(0); assert.equal(d.ctx.py, 17); d.step(0); assert.equal(d.ctx.py, 16);
   // soft drop never slows a fast level
@@ -273,57 +278,56 @@ test('gravity: level 1 drops a row every 256 / 6 frames; soft drop at least 128;
   e.step(4); assert.equal(e.ctx.py, 17); e.step(4); assert.equal(e.ctx.py, 15);
 });
 
-function landing(sim) { while (sim.ctx.lockT === 0) sim.step(4); return sim.frame - 1; }
-function lockFrame(sim, wordAt, max = 400) {
+// GAME_VERSION 3.0 (D119): instant lock. Steps wordAt(frame) until the piece locks and returns the lock event's frame.
+// Every frame before it must end with the piece in the air and the lock count at 0: a live piece never ends a frame
+// resting (it would have locked on that frame).
+function lockFrame(sim, wordAt, max = 1000) {
+  events(sim, EV_LOCK);
   for (let i = 0; i < max; i++) {
     const f = sim.frame; sim.step(wordAt(f));
     const l = events(sim, EV_LOCK); if (l.length) return l[0][1];
+    assert.ok(sim.ctx.pType !== 0 && !sim.resting(), 'frame ' + f + ': a live piece never ends a frame resting');
+    assert.equal(sim.ctx.lockT, 0, 'frame ' + f + ': no delay is counting in the air');
   }
   return -1;
 }
-test('lock delay: 32 frames of rest (levels 1 to 16), 24 (17 to 19), 16 (20); the landing frame is the first', () => {
-  for (const [lines, delay] of [[0, 32], [120, 32], [128, 24], [144, 24], [152, 16], [400, 16]]) {
+// B.6 (3.0): from the spawn frame (frame 0 here) a piece falling 18 rows on an empty board touches down, and locks, on
+// frame ceil(18 x 256 / G) - 1; soft drop makes G at least 128. Written out per level from the B.6 gravity table.
+test('lock delay 0 at every level (D119, GAME_VERSION 3.0): the piece locks on the frame it touches down; the landing frame is the lock frame', () => {
+  // [lines, level, lock frame with no input, lock frame with soft drop held]
+  for (const [lines, level, quiet, soft] of [[0, 1, 767, 35], [120, 16, 22, 22], [128, 17, 17, 17], [144, 19, 7, 7], [152, 20, 0, 0], [400, 20, 0, 0]]) {
+    const q = mk({ lines }); assert.equal(q.level, level);
+    assert.equal(lockFrame(q, () => 0), quiet, 'lines ' + lines + ': no input');
     const s = mk({ lines });
-    const f0 = landing(s); events(s, EV_LOCK);
-    assert.equal(lockFrame(s, () => 0), f0 + delay - 1, 'lines ' + lines);
+    assert.equal(lockFrame(s, () => 4), soft, 'lines ' + lines + ': soft drop');
   }
 });
 
-test('no lock resets (D111, GAME_VERSION 2.0): a move or turn while resting never restarts the delay; a ledge fall never pauses it (D117)', () => {
+test('no lock resets, instant lock (D111, D119): moves and turns in the air never start a delay; a move on the touchdown frame happens before the lock; a piece that rests on a ledge locks there', () => {
+  // tap LEFT, RIGHT, LEFT ... every 2 frames from frame 2: the moves happen, lockT stays 0, it locks on the same frame as with no input
+  const w = f => f >= 2 && f % 2 === 0 ? (f % 4 === 2 ? 9 : 18) : 0;
   const s = mk({});
-  const f0 = landing(s);
-  // tap LEFT, RIGHT, LEFT ... every 2 frames from f0 + 2: the moves happen, the delay never restarts, it locks on f0 + 31
-  const w = f => (f - f0) % 2 === 0 ? ((f - f0) % 4 === 2 ? 9 : 18) : 0;
-  assert.equal(lockFrame(s, w), f0 + 31, 'locks on the 32nd frame of rest, as with no input');
-  const m = mk({}); const g0 = landing(m);
+  assert.equal(lockFrame(s, w), 767, 'locks on its touchdown frame, as with no input');
+  const m = mk({});
   let moves = 0;
-  for (let f = g0 + 1; f < g0 + 31; f++) { const px = m.ctx.px, lt = m.ctx.lockT; m.step(w(f)); if (m.ctx.px !== px) moves++; assert.equal(m.ctx.lockT, lt + 1, 'frame ' + f); assert.equal(m.ctx.resets, 0); }
-  assert.ok(moves >= 14, 'the taps really moved the piece: ' + moves);
-  // D117: once the piece has first rested the delay counts every frame, in the air too: a ledge fall never pauses it
-  const t = mk({ heights: [0, 0, 0, 0, 0, 0, 0, 2, 2] });
-  for (let i = 0; i < 3; i++) { t.step(18); t.step(0); } // pivot 7: cells 6..8, resting on the ledge at row 2
-  while (t.ctx.lockT === 0) t.step(4);
-  for (let i = 0; i < 6; i++) { // 6 taps on the ledge (pivots 6 and 7 both rest on it)
-    const lt = t.ctx.lockT, px = t.ctx.px;
-    t.step(i % 2 ? 18 : 9);
-    assert.notEqual(t.ctx.px, px, 'moved'); assert.equal(t.ctx.lockT, lt + 1, 'no restart'); assert.equal(t.ctx.py, 2);
-    t.step(0);
-  }
-  assert.equal(t.ctx.resets, 0); assert.equal(t.ctx.px, 7);
-  t.step(9); t.step(0); // pivot 6: still on the ledge
-  const lt = t.ctx.lockT;
-  assert.equal(t.ctx.py, 2); assert.equal(lt, 15);
-  t.step(9); // pivot 5: off the ledge
-  assert.equal(t.ctx.lockT, lt + 1, 'the delay keeps counting while falling');
-  t.step(4); t.step(4); assert.equal(t.ctx.lockT, lt + 3); assert.ok(t.ctx.py < 2);
-  let air = 3;
-  while (t.ctx.py > 0) { const l0 = t.ctx.lockT; t.step(4); air++; assert.equal(t.ctx.lockT, l0 + 1, 'one a frame in the air'); }
-  assert.equal(t.ctx.lockT, lt + air, 'landed: every frame since the first rest counted, none paused');
-  assert.ok(t.ctx.lockT < 32 && t.ctx.pType !== 0, 'landed with time left, so it has not locked yet');
-  const spawned = t.ctx.spawned;
-  let n = 0; while (t.ctx.spawned === spawned && t.ctx.pType !== 0 && n < 100) { t.step(0); n++; }
-  assert.equal(n, 32 - (lt + air), 'locks 32 frames after it first rested: ledge, air and floor together');
-  assert.equal(t.ctx.resets, 0);
+  for (let f = 0; f < 700; f++) { const px = m.ctx.px; m.step(w(f)); if (m.ctx.px !== px) moves++; assert.equal(m.ctx.lockT, 0, 'frame ' + f); assert.equal(m.ctx.resets, 0); }
+  assert.ok(moves >= 300, 'the taps really moved the piece: ' + moves);
+  // a ledge: column 8 is 2 high. A flat BAR at pivot 7 (cells 6 to 8) rests on it at row 2; pivot 6 (cells 5 to 7) is over the floor
+  const ledge = () => mk({ heights: [0, 0, 0, 0, 0, 0, 0, 0, 2], pieces: ['BAR', 'BAR'] });
+  const toLedge = f => f < 6 ? (f % 2 === 0 ? 18 : 0) : 4; // 3 RIGHT taps to pivot 7, then soft drop
+  const p = ledge();
+  const T = lockFrame(p, toLedge);
+  assert.ok(T > 6, 'it reached the ledge');
+  assert.deepEqual([p.ctx.px, p.ctx.py], [7, 2], 'no input on the touchdown frame: locked on the ledge, on that frame');
+  // the same run with LEFT pressed on the touchdown frame: the move comes first, so the piece is over the floor and falls on
+  const l = ledge();
+  const L = lockFrame(l, f => f === T ? 9 | 4 : toLedge(f));
+  assert.ok(L > T, 'the move on the touchdown frame took it off the ledge before the lock check: ' + L + ' > ' + T);
+  assert.deepEqual([l.ctx.px, l.ctx.py], [6, 0], 'it fell to the floor at pivot 6 and locked on landing');
+  assert.equal(l.ctx.resets, 0);
+  // and once it has locked on the ledge, a LEFT on the next frame moves nothing (the piece is gone)
+  const g = p.grid.slice(); p.step(9);
+  assert.equal(p.ctx.pType, 0); assert.deepEqual(Array.from(p.grid), Array.from(g), 'the board did not change');
 });
 
 // ---------- MELT, clears, FIT (B.4, B.5, B.7) ----------
@@ -507,7 +511,8 @@ const noop = () => {};
 function play(sim) { let i = 0, acc = 0; while (!sim.done && i < N) { sim.step(words[i++]); acc ^= sim.stateHash(); sim.drain(noop); } return i + (acc & 0); }
 for (let k = 0; k < 6; k++) play(createSim({ seed: 900 + k, mode: k % 2 ? 'daily' : 'arcade' })); // warm up
 // 60 sims (D113): on 2.0 (no lock resets) 40 of them topped out at 157,347 frames, under the 200,000 this test needs
-const sims = []; for (let k = 0; k < 60; k++) sims.push(createSim({ seed: 1 + k, mode: k % 2 ? 'daily' : 'arcade' }));
+// 100 sims (D119, w69): on 3.0 (instant lock) the 60 top out at 140,447 frames; 100 play 239,449
+const sims = []; for (let k = 0; k < 100; k++) sims.push(createSim({ seed: 1 + k, mode: k % 2 ? 'daily' : 'arcade' }));
 let scav = 0;
 new PerformanceObserver(l => { for (const e of l.getEntries()) if (e.detail.kind === 1) scav++; }).observe({ entryTypes: ['gc'] });
 await new Promise(res => setTimeout(res, 50)); scav = 0;

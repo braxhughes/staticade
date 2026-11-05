@@ -21,37 +21,42 @@ function place(sim, col) {
   sim.step(32);
 }
 
-// ---------- M1 (rewritten for D111, GAME_VERSION 2.0): a successful turn while resting never restarts the lock delay ----------
-test('M1 no lock reset: a successful BAR turn on a resting piece keeps the lock delay counting and spends no reset', () => {
-  const s = mk({ pieces: ['BAR'] });
-  toPlay(s);
-  while (s.ctx.lockT === 0) s.step(4); // soft drop until it rests
-  while (s.ctx.lockT < 20) s.step(0);
-  assert.equal(s.ctx.lockT, 20); assert.equal(s.ctx.resets, 0);
-  s.step(64); // H to V on the floor
-  assert.equal(s.ctx.rot, ROT_V, 'the turn happened');
-  assert.equal(s.ctx.resets, 0, 'no reset spent');
-  assert.equal(s.ctx.lockT, 21, 'the delay went on (no restart)');
-  const spawned = s.ctx.spawned;
-  for (let i = 0; i < 10; i++) s.step(0); // frames 22 .. 31 of rest
-  assert.equal(s.ctx.lockT, 31); assert.equal(s.ctx.spawned, spawned, 'not locked yet');
-  s.step(0); // the 32nd frame of rest
-  assert.equal(s.ctx.pType, 0, 'locked on the 32nd frame of rest, as with no turn');
+// ---------- M1 (rewritten for D111, GAME_VERSION 2.0; again for D119, 3.0): a turn never restarts or adds a lock delay ----------
+// 3.0 has instant lock: a piece locks at the end of the frame it first rests, after that frame's turn and move. So the
+// last frame a turn can act on is the touchdown frame. runTo plays the same words on a fresh sim up to a frame.
+function runTo(t, words, upTo) { const s = mk(t); for (let f = 0; f < upTo; f++) s.step(words(f)); return s; }
+function lockOf(sim, word, max = 2000) { // steps word(frame) until a lock; returns [frame, lock event]
+  for (let i = 0; i < max; i++) { const f = sim.frame; sim.step(word(f)); const l = events(sim, EV_LOCK); if (l.length) return [l[0][1], l[0]]; }
+  return [-1, null];
+}
+test('M1 no lock reset: a successful BAR turn on the touchdown frame happens, spends no reset, and the piece still locks on that frame', () => {
+  const soft = () => 4;
+  const [T, ctrl] = lockOf(mk({ pieces: ['BAR'] }), soft); // control: soft drop only, flat BAR lands on the floor
+  assert.ok(T > 0); assert.equal(ctrl[3], 1, 'control: a flat BAR on the floor pays FLAT');
+  const s = runTo({ pieces: ['BAR'] }, soft, T);
+  assert.equal(s.ctx.lockT, 0); assert.ok(!s.resting(), 'one frame before touchdown it is still in the air');
+  events(s, EV_LOCK);
+  s.step(64 | 4); // H to V on the touchdown frame
+  const [lk] = events(s, EV_LOCK);
+  assert.ok(lk, 'locked on the touchdown frame'); assert.equal(lk[1], T, 'the same frame as with no turn');
+  assert.equal(s.ctx.rot, ROT_V, 'the turn happened before the lock');
+  assert.equal(lk[3], 0, 'an upright BAR never pays FLAT: the piece locked turned');
+  assert.equal(s.ctx.resets, 0, 'no reset spent'); assert.equal(s.ctx.pType, 0);
 });
 
-test('M1 no lock reset: a kicked V to H turn on a resting piece keeps the lock delay counting', () => {
-  const s = mk({ pieces: ['BAR'] });
-  toPlay(s);
-  while (s.ctx.lockT === 0) s.step(4);
-  s.step(64); // to V
-  while (s.ctx.px < 8) { s.step(18); s.step(0); }
-  while (s.ctx.lockT < 10) s.step(0);
-  assert.equal(s.ctx.px, 8); assert.equal(s.ctx.rot, ROT_V); assert.ok(s.ctx.lockT >= 10 && s.ctx.lockT < 20);
-  const t0 = s.ctx.lockT;
-  s.step(64); // V to H against the right wall: +1 blocked, -1 kicks to pivot 7
-  assert.equal(s.ctx.rot, ROT_H); assert.equal(s.ctx.px, 7, 'kicked one column left');
+test('M1 no lock reset: a kicked V to H turn on the touchdown frame kicks, then the piece locks on that frame', () => {
+  // upright BAR walked to the right wall (pivot 8), then soft drop
+  const word = f => f === 0 ? 64 : f < 9 ? (f % 2 === 1 ? 18 : 0) : 4;
+  const [T, ctrl] = lockOf(mk({ pieces: ['BAR'] }), word);
+  assert.ok(T > 9); assert.equal(ctrl[5], 8, 'control: locked upright at pivot 8');
+  const s = runTo({ pieces: ['BAR'] }, word, T);
+  assert.equal(s.ctx.px, 8); assert.equal(s.ctx.rot, ROT_V); assert.equal(s.ctx.lockT, 0);
+  events(s, EV_LOCK);
+  s.step(64 | 4); // V to H against the right wall: +1 blocked, -1 kicks to pivot 7
+  const [lk] = events(s, EV_LOCK);
+  assert.ok(lk); assert.equal(lk[1], T, 'locked on the touchdown frame');
+  assert.equal(s.ctx.rot, ROT_H); assert.equal(lk[5], 7, 'kicked one column left, then locked there');
   assert.equal(s.ctx.resets, 0);
-  assert.equal(s.ctx.lockT, t0 + 1, 'no restart');
 });
 
 // ---------- the 64 RIDGES equal the design doc table ----------
@@ -195,6 +200,6 @@ test('L5 LEAN deck is 2 BAR + 2 PLUS; the normal deck is 3 BAR + 2 PLUS', () => 
 });
 
 test('L5 version: game id and version are pinned (a bump invalidates every stored replay)', () => {
-  assert.equal(GAME_ID, 'stacklight'); assert.equal(GAME_VERSION, '2.0');
-  assert.equal(createSim({ seed: 1, mode: 'arcade' }).info().version, '2.0');
+  assert.equal(GAME_ID, 'stacklight'); assert.equal(GAME_VERSION, '3.0');
+  assert.equal(createSim({ seed: 1, mode: 'arcade' }).info().version, '3.0');
 });

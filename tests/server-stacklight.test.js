@@ -24,7 +24,8 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const H = 3600000, DAY = 24 * H;
 // Golden Free Play seed 1 (tests/stacklight-golden.test.js): its r1 string is read from that file in before().
 // GAME_VERSION 2.0 (D111, D113): re-recorded golden; 1.0 was frames 9941, score 13885, lines 31, hash 2241779068.
-const GOLD = { seed: 1, frames: 9382, score: 10925, lines: 29, hash: 226820778 };
+// GAME_VERSION 3.0 (D119): re-recorded golden (instant lock); 2.0 was frames 9382, score 10925, lines 29, hash 226820778.
+const GOLD = { seed: 1, frames: 15520, score: 49680, lines: 64, hash: 943174853 };
 
 // ---------- a word bot (the golden script's placement rule, best placement only, tap and hard drop) ----------
 function heights(sim) { const h = []; for (let c = 0; c < COLS; c++) h.push(columnHeight(sim.grid, c)); return h; }
@@ -74,7 +75,7 @@ let GOLDEN, FREE2, TODAY, SF_FREE;
 before(() => {
   // the golden r1 string itself, read from the golden test file so this test never holds a second copy
   const text = fs.readFileSync(fileURLToPath(new URL('./stacklight-golden.test.js', import.meta.url)), 'utf8');
-  const m = /r1: '(r1~stacklight~2\.0~1~arcade~[^']+)'/.exec(text);
+  const m = /r1: '(r1~stacklight~3\.0~1~arcade~[^']+)'/.exec(text);
   GOLDEN = { ...GOLD, replay: m[1] };
   FREE2 = { ...playBot(77, 'arcade', 5), seed: 77 };
   const day = todayUTC();
@@ -85,7 +86,7 @@ before(() => {
 // ---------- registry ----------
 test('registry: starfall and stacklight, own keys only, no test mode, per-game version and mode headers', () => {
   assert.deepEqual(Object.keys(GAMES).sort(), ['stacklight', 'starfall']);
-  assert.equal(gameOf('stacklight').version, '2.0');
+  assert.equal(gameOf('stacklight').version, '3.0');
   assert.equal(gameOf('starfall').version, SF_VERSION);
   for (const id of ['constructor', '__proto__', 'toString', 'other', '', undefined, null]) assert.equal(gameOf(id), null, String(id));
   assert.deepEqual({ ...gameOf('stacklight').modeHeader }, { daily: 'daily', free: 'arcade' });
@@ -99,19 +100,20 @@ test('registry: starfall and stacklight, own keys only, no test mode, per-game v
 test('golden Free Play seed 1 verifies: the server keeps its own score, frames, level and hash', () => {
   const v = makeServerVerifier()({ game: GAME_ID, replay: GOLDEN.replay, seed: 1, mode: 'free', version: GAME_VERSION });
   assert.equal(v.score, GOLD.score); assert.equal(v.frames, GOLD.frames); assert.equal(v.hash, String(GOLD.hash), 'the hash is kept as a string (results.hash is TEXT)');
-  assert.equal(v.stage, 4, 'stage is the level (29 lines in Free Play: level 4)');
+  assert.equal(v.stage, 9, 'stage is the level (64 lines in Free Play: level 9)');
   assert.ok(v.sig.length >= 32 && v.sig.length % 2 === 0, 'a near-copy signature is recorded');
 });
 
-test('golden run through worker.fetch: 201, on the stacklight board (version 2), not on Starfall\'s', async () => {
+test('golden run through worker.fetch: 201, on the stacklight board (version 3), not on Starfall\'s', async () => {
   const W = createWorker(), env = await makeEnv();
   const r = await post(W, env, slBody({ ...GOLDEN, seed: 1 }), { ip: ipN() });
   assert.equal(r.status, 201, JSON.stringify(r.body));
-  assert.deepEqual(r.body.verified, { frames: GOLD.frames, stage: 4, hash: String(GOLD.hash) });
+  assert.deepEqual(r.body.verified, { frames: GOLD.frames, stage: 9, hash: String(GOLD.hash) });
   const b = await get(W, env, '/board?game=stacklight&board=all');
-  assert.deepEqual(b.body.rows.map((x) => [x.name, x.score]), [['ACE', GOLD.score]], 'default board version is STACKLIGHT\'s major (2)');
-  assert.deepEqual((await get(W, env, '/board?game=stacklight&board=all&version=2')).body.rows.length, 1);
-  assert.deepEqual((await get(W, env, '/board?game=stacklight&board=all&version=1')).body.rows, [], 'a 2.0 run is not on the 1.0 board');
+  assert.deepEqual(b.body.rows.map((x) => [x.name, x.score]), [['ACE', GOLD.score]], 'default board version is STACKLIGHT\'s major (3)');
+  assert.deepEqual((await get(W, env, '/board?game=stacklight&board=all&version=3')).body.rows.length, 1);
+  assert.deepEqual((await get(W, env, '/board?game=stacklight&board=all&version=2')).body.rows, [], 'a 3.0 run is not on the 2.0 board');
+  assert.deepEqual((await get(W, env, '/board?game=stacklight&board=all&version=1')).body.rows, [], 'a 3.0 run is not on the 1.0 board');
   assert.deepEqual((await get(W, env, '/board?game=starfall&board=all')).body.rows, []);
   const rp = await get(W, env, `/replay/${r.body.id}`);
   assert.equal(rp.body.replay, GOLDEN.replay);
@@ -132,8 +134,9 @@ async function refuse(body, code, status = 422) {
 const G = () => ({ ...GOLDEN, seed: 1 });
 
 test('bad version: an old or future STACKLIGHT version, or Starfall\'s version number, is wrong_version', async () => {
-  await refuse(slBody({ ...G(), replay: GOLDEN.replay.replace('~2.0~', '~1.0~'), version: '1.0' }), 'wrong_version');
-  await refuse(slBody({ ...G(), replay: GOLDEN.replay.replace('~2.0~', '~3.0~'), version: '3.0' }), 'wrong_version');
+  await refuse(slBody({ ...G(), replay: GOLDEN.replay.replace('~3.0~', '~1.0~'), version: '1.0' }), 'wrong_version');
+  await refuse(slBody({ ...G(), replay: GOLDEN.replay.replace('~3.0~', '~2.0~'), version: '2.0' }), 'wrong_version');
+  await refuse(slBody({ ...G(), replay: GOLDEN.replay.replace('~3.0~', '~4.0~'), version: '4.0' }), 'wrong_version');
   await refuse(slBody({ ...G(), version: '1.0' }), 'wrong_version');
   await refuse(slBody({ ...G(), version: SF_VERSION }), 'wrong_version');
 });
@@ -201,7 +204,7 @@ test('STACKLIGHT pass B on its own: the score for an honest run, NaN for every b
     'cut': reencode(GOLDEN.replay, (w) => w.slice(0, 5000)),
     'reserved bit': reencode(GOLDEN.replay, (w) => { w[100] |= 0x100; }),
     'test mode': GOLDEN.replay.replace('~arcade~', '~test~'),
-    'old version': GOLDEN.replay.replace('~2.0~', '~1.0~'),
+    'old version': GOLDEN.replay.replace('~3.0~', '~2.0~'),
     'starfall header': GOLDEN.replay.replace('~stacklight~', '~starfall~'),
     'not canonical': GOLDEN.replay + 'A',
   };

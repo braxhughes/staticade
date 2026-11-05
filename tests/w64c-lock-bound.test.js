@@ -1,23 +1,22 @@
-// The true STACKLIGHT lock bound. A resting frame sets the sub-row counter to 0, so a piece that slides onto a
-// ledge late in a row's fall throws away part of a row. Written out here from the STACKLIGHT design document, B.6, not
-// read from the sim. A piece's life (spawn frame = frame 1) is: the fall to its first rest, r1 rows plus the discarded
-// partial row, at most ceil((r1 + 1) x 256 / G) frames; then at most delay - 2 more frames to its last resting frame
-// (that frame has lockT <= delay - 1, or it would have locked); then, if the delay ran out in the air, the fall of the
-// remaining r3 <= 18 - r1 rows from a rest, at most ceil(r3 x 256 / G) frames. If it locks while resting instead, the
-// life is at most ceil(18 x 256 / G) + delay - 1.
+// The true STACKLIGHT lock bound. GAME_VERSION 2.0 had a lock delay, and a resting frame set the sub-row
+// counter to 0, so a piece that slid onto a ledge late in a row's fall threw away part of a row and lived longer than
+// the plain 18-row fall. GAME_VERSION 3.0 (D119) locks a piece on its first resting frame, so the only frame
+// that sets the sub-row counter to 0 is the lock frame: nothing is thrown away. Written out here from the STACKLIGHT
+// design document, B.6, NOT read from the sim or from lockDelayFor (so a sim with a lock delay of 1 fails this file):
+// a piece falls at most 18 rows (spawn row 18 to row 0, never up), it gains G / 256 of a row every frame it is in the
+// air, so from its spawn frame (frame 1) it lives at most ceil(18 x 256 / G) frames, and the plain full fall lives
+// exactly that long. Rewritten for 3.0 (D119 approved this file): same three checks (attack grid with tightness, the
+// bound one frame shorter is too small, the seeded fuzz).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createSim, PH_PLAY } from '../games/stacklight/sim.js';
-import { GRAVITY, lockDelayFor } from '../games/stacklight/defs.js';
+import { GRAVITY } from '../games/stacklight/defs.js';
 import { Rng } from '../engine/rng.js';
 
 const rows = (r, G) => Math.ceil(r * 256 / G);
-export const bound = (level) => {
-  const G = GRAVITY[level], delay = lockDelayFor(level);
-  let air = 0; // delay ran out in the air: first rest after r1 rows (a ledge, so r1 <= 17), then the rest of the fall
-  for (let r1 = 0; r1 <= 17; r1++) air = Math.max(air, rows(r1 + 1, G) + rows(18 - r1, G) + delay - 2);
-  return Math.max(air, rows(18, G) + delay - 1);
-};
+export const bound = (level) => rows(18, GRAVITY[level]);
+// the bounds B.6 states for these levels, typed from the doc
+const DOC = { 1: 768, 2: 576, 5: 288, 10: 91, 13: 46, 16: 23 };
 const LV = [[1, 0], [2, 8], [5, 32], [10, 72], [13, 96], [16, 120]];
 const LEFT = 9, RIGHT = 18;
 const start = (heights, lines, seed = 1, pieces = ['BAR', 'BAR']) => {
@@ -27,7 +26,8 @@ const start = (heights, lines, seed = 1, pieces = ['BAR', 'BAR']) => {
 };
 
 // The stretch shape: wait until the pivot is on the ledge row with the sub counter near a full row, tap
-// right onto the ledge, stay `slide` frames, step off. Returns frames from spawn to lock.
+// right onto the ledge, stay `slide` frames, step off. Returns frames from spawn to lock. On 3.0 the piece locks on the
+// frame it taps onto the ledge, so the stay and the step off never happen; H = 0 is the floor (no ledge): the full fall.
 function stretch(lvl, lines, H, slide, trigger) {
   const G = GRAVITY[lvl];
   const s = start([0, 0, 0, 0, 0, 0, H, 0, 0], lines);
@@ -48,11 +48,12 @@ function stretch(lvl, lines, H, slide, trigger) {
 test('partial-row ledge slide: never beyond the bound, and the bound is reached, at levels 1, 2, 5, 10, 13, 16', () => {
   const table = [];
   for (const [lvl, lines] of LV) {
-    const G = GRAVITY[lvl], delay = lockDelayFor(lvl);
+    const G = GRAVITY[lvl];
+    assert.equal(bound(lvl), DOC[lvl], `level ${lvl}: the formula gives the bound B.6 states`);
     let worst = 0;
-    // broad grid: every ledge height 1 to 16, every slide length, three sub phases
-    for (let H = 1; H <= 16; H++) {
-      for (let slide = 0; slide <= delay; slide++) {
+    // broad grid: the floor and every ledge height 1 to 16, slide lengths 0 to 32 (the 2.0 level 1 delay), three sub phases
+    for (let H = 0; H <= 16; H++) {
+      for (let slide = 0; slide <= 32; slide += (slide < 4 ? 1 : 7)) {
         for (const trigger of [256 - G, 256 - 2 * G, 128]) {
           const life = stretch(lvl, lines, H, slide, trigger);
           assert.ok(life <= bound(lvl), `level ${lvl} ledge ${H} slide ${slide}: ${life} frames, bound ${bound(lvl)}`);
@@ -60,8 +61,8 @@ test('partial-row ledge slide: never beyond the bound, and the bound is reached,
         }
       }
     }
-    // fine grid on the ledges that make the longest lives: every sub phase
-    for (const H of [1, 2]) for (const slide of [delay - 3, delay - 2, delay - 1]) for (let trigger = 0; trigger <= 260; trigger++) {
+    // fine grid on the ledges that made the longest 2.0 lives: every sub phase
+    for (const H of [1, 2]) for (const slide of [0, 1, 2]) for (let trigger = 0; trigger <= 260; trigger++) {
       const life = stretch(lvl, lines, H, slide, trigger);
       assert.ok(life <= bound(lvl), `level ${lvl} ledge ${H} slide ${slide} phase ${trigger}: ${life} frames, bound ${bound(lvl)}`);
       if (life > worst) worst = life;
@@ -72,11 +73,12 @@ test('partial-row ledge slide: never beyond the bound, and the bound is reached,
   console.log(table.join('\n'));
 });
 
-test('the old 18-row bound is really too small (the partial-row slide beats it at level 1), so the test above can fail', () => {
-  const old = Math.ceil(18 * 256 / GRAVITY[1]) + lockDelayFor(1);
-  assert.equal(old, 800);
-  let best = 0; for (let slide = 0; slide <= 32; slide++) best = Math.max(best, stretch(1, 0, 2, slide, 256 - GRAVITY[1]));
-  assert.ok(best > old, `best ${best}`);
+test('a bound one frame shorter is really too small (the full fall beats it at level 1), so the test above can fail', () => {
+  const short = Math.ceil(18 * 256 / GRAVITY[1]) - 1;
+  assert.equal(short, 767);
+  let best = 0;
+  for (const H of [0, 1, 2]) for (let slide = 0; slide <= 32; slide++) best = Math.max(best, stretch(1, 0, H, slide, 256 - GRAVITY[1]));
+  assert.ok(best > short, `best ${best}`);
 });
 
 test('seeded random-input fuzz: thousands of pieces per level all lock within the bound', () => {

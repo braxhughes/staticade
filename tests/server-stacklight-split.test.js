@@ -65,9 +65,16 @@ function symMoments(seed, mode, words) {
 // exact score and, as played, is under NEAR. The scan found 7 such runs; these 5 are the ones with the highest scores.
 // Since the lock timer no longer pauses in the air, the same scan re-run finds the same 7 runs with the same
 // scores; two split frames moved (seed 41 run 2: 7458 to 7438; seed 13 run 4: 5148 to 5126).
-const ESCAPES = [[1, 11, 9823, 58040], [41, 2, 7438, 103610], [33, 7, 4852, 22810], [13, 4, 5126, 18725], [35, 1, 5429, 34860]];
-// a 2.0 run with three symmetric moments whose 3-switch copy got under NEAR as played (1.0: seed 1 run 14)
-const THREE = [41, 2];
+// GAME_VERSION 3.0 (instant lock, D119): the 2.0 escapes ([1, 11, 9823, 58040], [41, 2, 7438, 103610],
+// [33, 7, 4852, 22810], [13, 4, 5126, 18725], [35, 1, 5429, 34860]) are other runs on 3.0. The same scan (same bot, same
+// seed and input seed ranges) on 3.0 finds 14 escape frames in 12 runs; these 5 are the runs with the highest scores
+// (first escape frame of each), except seed 37 run 6 (58640, split at 9961): its split copy plus 10 idle frames at
+// frame 2 tops out earlier (the shift moves every lock on 3.0), so the split + shift test would not see the same run.
+// The scan is docs/w69/scan-split.mjs.
+const ESCAPES = [[31, 8, 11428, 78540], [424242, 37, 8813, 51805], [424242, 39, 8595, 33785], [32, 5, 4712, 30215], [22, 5, 10428, 26755]];
+// a run with three symmetric moments whose 3-switch copy got under NEAR as played (1.0: seed 1 run 14; 2.0: seed 41
+// run 2; 3.0: the scan found seed 1 run 14 and seed 22 run 5; seed 22 run 5 is already in ESCAPES, so this one)
+const THREE = [1, 14];
 
 test('review 3 H1: the five split-mirror copies keep the exact score and are now 1.0 alike (held); as played they were under NEAR', () => {
   for (const [seed, inSeed, f, score] of ESCAPES) {
@@ -267,7 +274,7 @@ const http = async (path, body) => {
 let N = 0;
 const body = (o) => ({ game: GAME_ID, playerId: `w48d-${String(++N).padStart(4, '0')}`, name: o.name, score: o.score, replay: o.replay, seed: o.seed, mode: 'free', version: GAME_VERSION });
 
-test('dev server HTTP: review 3\'s split mirror (2.0: seed 1 run 11 from frame 9823), a 3-switch copy are held (202) and a 2-switch copy is an exact duplicate (409), never 201; the board keeps the originals only', async () => {
+test('dev server HTTP: review 3\'s split mirror (3.0: the first ESCAPES run from its split frame), a 3-switch copy are held (202) and a 2-switch copy is an exact duplicate (409), never 201; the board keeps the originals only', async () => {
   const port = await freePort();
   dev = spawn(process.execPath, ['server/dev-server.mjs', String(port)], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, DAILY_SECRET: '', ADMIN_TOKEN: '' } });
   await new Promise((res, rej) => {
@@ -278,14 +285,14 @@ test('dev server HTTP: review 3\'s split mirror (2.0: seed 1 run 11 from frame 9
   base = `http://127.0.0.1:${port}`;
   const want = [];
   // an even number of switches ends plain on the original's own final board (same hash): the exact check takes it (409)
-  const copiesOf = { 11: (at) => [['SPL', [9823], 202], ['SPT', at.slice(0, 2), 409]], [THREE[1]]: (at) => [['SPH', at.slice(0, 3), 202]] };
-  for (const [seed, inSeed, name] of [[1, 11, 'ORG'], [THREE[0], THREE[1], 'ORH']]) {
+  const copiesOf = { ORG: (at) => [['SPL', [ESCAPES[0][2]], 202], ['SPT', at.slice(0, 2), 409]], ORH: (at) => [['SPH', at.slice(0, 3), 202]] };
+  for (const [seed, inSeed, name] of [[ESCAPES[0][0], ESCAPES[0][1], 'ORG'], [THREE[0], THREE[1], 'ORH']]) {
     const r = BOT.playBot(seed, 'arcade', inSeed);
     const first = await http('/submit', body({ name, seed, score: r.score, replay: r.replay }));
     assert.equal(first.status, 201, JSON.stringify(first.body));
     want.push([name, r.score]);
     const fetched = (await http(`/replay/${first.body.id}`)).body.replay, w = wordsOf(fetched), at = symMoments(seed, 'arcade', w);
-    for (const [who, sw, status] of copiesOf[inSeed](at)) {
+    for (const [who, sw, status] of copiesOf[name](at)) {
       assert.ok(sw.length >= 1 && sw.every((f) => at.includes(f)), `${who}: switches at symmetric moments ${sw}`);
       const res = await http('/submit', body({ name: who, seed, score: r.score, replay: withWords(fetched, switched(w, sw)) }));
       assert.equal(res.status, status, `${who} (switches at ${sw}): ${JSON.stringify(res.body)}`);

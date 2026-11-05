@@ -154,13 +154,13 @@ test('2d. UTC midnight: 23:59:59.999 is one day, 00:00:00.000 the next; a local 
   assert.equal(modes.attemptUsed('2026-11-01'), true); assert.equal(modes.attemptUsed('2026-11-02'), false);
 });
 
-test('2e. the submit body is what the board takes: game, version 2.0, replay, seed, mode, day, ticket, stats', () => {
+test('2e. the submit body is what the board takes: game, version 3.0, replay, seed, mode, day, ticket, stats', () => {
   const { modes } = env();
   const r = modes.begin(M.MODE_DAILY, 0, { dayKey: DAY, seed: dailySeed(DAY), ticket: 'tk' }); modes.claim(r);
   const { sim, replay } = playOut(r.seed, 'daily');
   const b = modes.body(r, sim, replay, 'ZED', PID);
   assert.deepEqual(Object.keys(b).sort(), ['dayKey', 'game', 'mode', 'name', 'playerId', 'replay', 'score', 'seed', 'stats', 'ticket', 'version']);
-  assert.equal(b.game, 'stacklight'); assert.equal(b.version, '2.0'); assert.equal(b.mode, 'daily');
+  assert.equal(b.game, 'stacklight'); assert.equal(b.version, '3.0'); assert.equal(b.mode, 'daily');
   assert.equal(b.score, sim.score); assert.equal(b.stats.hash, String(sim.stateHash())); assert.equal(b.stats.frames, sim.frame);
   const f = modes.begin(M.MODE_FREE, 3); modes.claim(f);
   const fb = modes.body(f, playOut(3, 'arcade').sim, 'r', 'AAA', PID);
@@ -247,7 +247,7 @@ test('5. STACKLIGHT and Starfall rows share one store but never one board, eithe
   assert.ok(keys.some(k => k.startsWith('board:stacklight:')) && keys.some(k => k.startsWith('board:starfall:')), keys.join());
   // a STACKLIGHT replay submitted under the other game's name, and the reverse, is refused
   await assert.rejects(lb.submitScore({ game: 'starfall', playerId: PID, name: 'BAD', score: p.sim.score, replay: p.replay, seed: 5, mode: 'free', version: SF_VERSION }));
-  await assert.rejects(lb.submitScore({ game: 'stacklight', playerId: PID, name: 'BAD', score: sfSim.score, replay: rec.encode({ game: SF_ID, version: SF_VERSION, seed: 777, mode: 'arcade' }), seed: 777, mode: 'free', version: '2.0' }));
+  await assert.rejects(lb.submitScore({ game: 'stacklight', playerId: PID, name: 'BAD', score: sfSim.score, replay: rec.encode({ game: SF_ID, version: SF_VERSION, seed: 777, mode: 'arcade' }), seed: 777, mode: 'free', version: '3.0' }));
   assert.deepEqual((await lb.getBoard({ game: 'stacklight', board: 'all' })).map(r => r.name), ['SLT']);
   assert.deepEqual((await lb.getBoard({ game: 'starfall', board: 'all' })).map(r => r.name), ['STR']);
 });
@@ -255,7 +255,7 @@ test('5. STACKLIGHT and Starfall rows share one store but never one board, eithe
 // ---------- 6. the verifier ----------
 test('6. the local verifier takes an honest finished run and refuses every kind of lie', () => {
   const v = M.makeVerifyReplay({ now: () => NOW });
-  const a = playOut(5, 'arcade'), claim = { replay: a.replay, seed: 5, mode: 'free', version: '2.0', game: 'stacklight' };
+  const a = playOut(5, 'arcade'), claim = { replay: a.replay, seed: 5, mode: 'free', version: '3.0', game: 'stacklight' };
   assert.equal(v(claim), a.sim.score, 'honest free run');
   assert.ok(Number.isNaN(v({ ...claim, mode: 'daily', dayKey: DAY })), 'free replay claimed as daily');
   assert.ok(Number.isNaN(v({ ...claim, seed: 6 })), 'seed');
@@ -268,7 +268,7 @@ test('6. the local verifier takes an honest finished run and refuses every kind 
   const open = createSim({ seed: 5, mode: 'arcade' }); for (let i = 0; i < 100; i++) { open.step(0); open.clearEvents(); }
   assert.ok(Number.isNaN(v({ ...claim, replay: open.replay() })), 'unfinished');
   // a daily: right day seed; wrong seed for the day; a day far from today; a bad day
-  const d = playOut(dailySeed(DAY), 'daily'), dc = { replay: d.replay, seed: dailySeed(DAY), mode: 'daily', dayKey: DAY, version: '2.0', game: 'stacklight' };
+  const d = playOut(dailySeed(DAY), 'daily'), dc = { replay: d.replay, seed: dailySeed(DAY), mode: 'daily', dayKey: DAY, version: '3.0', game: 'stacklight' };
   assert.equal(v(dc), d.sim.score);
   assert.ok(Number.isNaN(v({ ...dc, dayKey: '2026-11-02', seed: dailySeed(DAY) })), 'the seed of another day');
   assert.ok(Number.isNaN(v({ ...dc, dayKey: undefined })), 'no day');
@@ -366,11 +366,11 @@ test('9a. attract picks the best all-time replay of THIS version; other versions
   const rows = [{ id: 'a', name: 'TOP', score: 900 }, { id: 'b', name: 'SF', score: 800 }, { id: 'c', name: 'OLD', score: 700 }, { id: 'd', name: 'DLY', score: 600 }, { id: 'e', name: 'OK', score: 500 }];
   const h = decode(good);
   const lb = fakeLb(rows, {
-    a: { game: 'stacklight', version: '1.0', replay: good },                            // the record says another (the old) version
-    b: { game: 'starfall', version: '2.0', replay: good },                              // another game
-    c: { game: 'stacklight', version: '2.0', replay: encode({ ...h, version: '1.0' }, h.words) }, // the string says another (the old) version
-    d: { game: 'stacklight', version: '2.0', replay: daily },
-    e: { game: 'stacklight', version: '2.0', replay: good }
+    a: { game: 'stacklight', version: '2.0', replay: good },                            // the record says another (the old) version
+    b: { game: 'starfall', version: '3.0', replay: good },                              // another game
+    c: { game: 'stacklight', version: '3.0', replay: encode({ ...h, version: '2.0' }, h.words) }, // the string says another (the old) version
+    d: { game: 'stacklight', version: '3.0', replay: daily },
+    e: { game: 'stacklight', version: '3.0', replay: good }
   });
   const best = await pickBest(lb);
   assert.equal(best.name, 'DLY', 'the first playable row, in board order: a Daily replay is fine, the others are skipped');
@@ -378,7 +378,7 @@ test('9a. attract picks the best all-time replay of THIS version; other versions
   rows.splice(3, 1);
   assert.equal((await pickBest(lb)).name, 'OK');
   assert.equal(await pickBest(fakeLb([], {})), null);
-  assert.equal(await pickBest(fakeLb(rows.slice(0, 3), { a: { game: 'stacklight', version: '1.0', replay: good } })), null, 'only wrong-version replays: nothing');
+  assert.equal(await pickBest(fakeLb(rows.slice(0, 3), { a: { game: 'stacklight', version: '2.0', replay: good } })), null, 'only wrong-version replays: nothing');
   // a replay with a reserved input bit, or a test mode, is never played
   const bits = encode(h, Uint16Array.from([...h.words].map((w, i) => (i === 3 ? 0x100 : w))));
   assert.equal(pickDemo(bits), null);
@@ -386,7 +386,7 @@ test('9a. attract picks the best all-time replay of THIS version; other versions
   assert.equal(pickDemo('nonsense'), null); assert.equal(pickDemo(''), null); assert.equal(pickDemo(null), null);
 });
 
-test('9b. the bundled demo is a real STACKLIGHT 2.0 run: it plays whole on the real sim and is what attract falls back to', async () => {
+test('9b. the bundled demo is a real STACKLIGHT 3.0 run: it plays whole on the real sim and is what attract falls back to', async () => {
   const d = decode(DEMO_REPLAY);
   assert.equal(d.game, 'stacklight'); assert.equal(d.version, GAME_VERSION); assert.equal(d.mode, 'arcade');
   assert.ok(d.words.length > 1200, 'long enough to fill a 20 s phase: ' + d.words.length);
@@ -394,7 +394,7 @@ test('9b. the bundled demo is a real STACKLIGHT 2.0 run: it plays whole on the r
   for (const w of d.words) { assert.equal(sim.done, false, 'the demo does not top out early'); sim.step(w); sim.clearEvents(); }
   assert.ok(sim.score > 5000 && sim.lines >= 20, 'a good run: ' + sim.score + ' ' + sim.lines);
   assert.ok(pickDemo(DEMO_REPLAY), 'playable');
-  assert.equal(pickDemo(DEMO_REPLAY, 'stacklight', '1.0'), null, 'a demo for another version is ignored');
+  assert.equal(pickDemo(DEMO_REPLAY, 'stacklight', '2.0'), null, 'a demo for another version is ignored');
   const A = createAttract({ lb: fakeLb([], {}), demo: DEMO_REPLAY });
   await A.prepare();
   assert.equal(A.kind, 'demo'); assert.equal(A.banner, 'DEMO RUN');

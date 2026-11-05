@@ -71,9 +71,12 @@ test('reaches an upright BAR in a three-deep well (a real rotate press, then a d
   assert.equal(r.sim.lines, 3);
 });
 
-test('reaches a far column at level 16 with a held direction (auto-repeat), and a flat BAR on a level surface (FLAT)', () => {
-  const far = oneLock([0, 3, 3, 3, 3, 3, 3, 3, 3], ['BAR', 'PLUS', 'BAR'], 120);
-  assert.equal(far.sim.level, 16); assert.equal(far.planned.tcol, 0); assert.equal(far.lock.col, 0);
+test('reaches a far column at level 13 with a held direction (auto-repeat), and a flat BAR on a level surface (FLAT)', () => {
+  // GAME_VERSION 3.0 (D119): was level 16. With instant lock a level 16 piece over this board lives 19 frames
+  // (15 rows at G 204) and tier 9 first presses on frame 13, so column 0 (4 moves, the 2nd one 11 frames later) is out
+  // of reach for anyone. Level 13 (G 102: 38 frames) is the fastest level where a held direction still gets there.
+  const far = oneLock([0, 3, 3, 3, 3, 3, 3, 3, 3], ['BAR', 'PLUS', 'BAR'], 96);
+  assert.equal(far.sim.level, 13); assert.equal(far.planned.tcol, 0); assert.equal(far.lock.col, 0);
   assert.ok(far.words.some(w => (w & 1) && !(w & 8)), 'LEFT was held without a new press');
   const flat = oneLock([2, 2, 2, 2, 2, 2, 2, 2, 2], ['BAR', 'BAR', 'BAR']);
   assert.equal(flat.lock.fit, 1); assert.equal(flat.lock.col, flat.planned.tcol);
@@ -166,6 +169,9 @@ test('model agrees with the sim over full tier-9 runs: at most 4 misses a run an
   // of the delay is left. The default bot plans from lockT 0 (it never read the timer; resets used to hide that), so it
   // misses 7, 6, 15, 6, 13 at level 19 to 20 for that reason alone. This test checks the model's physics, so it runs
   // with seenLock (the model starts from the sim's lockT): 0, 0, 1, 0, 3 (total 4). Same bounds as before.
+  // GAME_VERSION 3.0 (D119): the landing frame is the lock frame, so a plan that starts the fall from sub-row 0
+  // misses when the piece is already partway into a row (0, 5, 8, 0, 2). seenLock now also starts the model from the
+  // sim's sub-row counter: 0, 0, 0, 0, 0. Same bounds as before.
   const missed = [1, 2, 3, 4, 5].map(seed => playRun({ seed, tier: 9, seenLock: true }).stats.missed);
   const total = missed.reduce((a, b) => a + b, 0);
   assert.ok(missed.every(m => m <= 4), 'misses per run ' + missed.join(','));
@@ -179,16 +185,20 @@ function lockstep({ heights, piece, lines, tcol, trot, early = false }) {
   const m = new PieceModel(), ctl = new Controller(type, tcol, trot);
   let pre = 0;
   if (early) { // drop the first piece, then plan the next one from the first frame of the entry delay (8 frames)
-    sim.step(0); sim.step(IN_HARD_PRESS); assert.equal(sim.info().phase, 'delay'); sim.clearEvents();
+    // GAME_VERSION 3.0 (D119): at level 20 the first piece locks on its spawn frame (frame 0), so no hard drop
+    sim.step(0); if (sim.info().phase !== 'delay') sim.step(IN_HARD_PRESS); assert.equal(sim.info().phase, 'delay'); sim.clearEvents();
     pre = sim.lines !== lines ? 28 : 8; // B.6: 8 entry frames, or 20 clear + 8 entry
     m.grid.set(sim.grid);
     m.reset(type, SPAWN_COL, SPAWN_ROW, ROT_H, GRAVITY[sim.level], sim.level, pre);
   } else {
-    sim.step(0); // the spawn frame
-    const p = sim.info().piece, S = sim.ctx;
+    // GAME_VERSION 3.0 (D119): the model and the sim both step the spawn frame with the controller's word (2.0
+    // stepped it with word 0 and copied the sim's state; at level 20 the piece now locks on its spawn frame, so there
+    // is no state to copy). The sim's spawn frame is frame 0 here: phase 'delay' with no frames left.
+    const S = sim.ctx;
+    assert.equal(sim.frame, 0); assert.equal(sim.info().phase, 'delay');
     m.grid.set(sim.grid);
-    m.reset(type, p.col, p.row, p.rot, GRAVITY[sim.level], sim.level, 0);
-    m.sub = S.sub; m.lockT = S.lockT; m.resets = S.resets; m.arDir = S.arDir; m.arT = S.arT; m.prev = S.prev;
+    m.reset(type, SPAWN_COL, SPAWN_ROW, ROT_H, GRAVITY[sim.level], sim.level, 0);
+    m.arDir = S.arDir; m.arT = S.arT; m.prev = S.prev;
   }
   for (let t = 0; t < 400; t++) {
     const preBefore = m.pre, w = ctl.next(m.c, m.rot, m.pre);
@@ -307,7 +317,9 @@ test('rule hook: no change by itself; lock delay, resets, lines per level and gr
     import { playRun, withRules, rulesHookActive } from './tools/stacklight-bot.mjs';
     const h = r => withRules(r, () => { const x = playRun({ seed: 1, tier: 5 }); return x.hash + ':' + x.frames + ':' + x.level; });
     const out = { active: rulesHookActive(), base: h(null), gravity: h({ gravity: Array(20).fill(5376) }) };
-    if (out.active) { out.lock = h({ lockDelay: Array(20).fill(8) }); out.resets = h({ resets: 12 }); out.lines = h({ linesPerLevel: 4 }); }
+    // GAME_VERSION 3.0 (D119, w69): a reset needs a move while resting, and with delay 0 a resting piece locks that
+    // frame, so resets are checked with a lock delay set: they must change the run beyond what the delay alone does
+    if (out.active) { out.lock = h({ lockDelay: Array(20).fill(8) }); out.resets = h({ resets: 12, lockDelay: Array(20).fill(8) }); out.lines = h({ linesPerLevel: 4 }); }
     out.again = h(null);
     console.log(JSON.stringify(out));`;
   const root = new URL('..', import.meta.url);
@@ -322,6 +334,7 @@ test('rule hook: no change by itself; lock delay, resets, lines per level and gr
   assert.equal(on.base, off.base, 'the hook alone changes nothing');
   assert.equal(on.again, on.base, 'rules put back');
   for (const k of ['lock', 'resets', 'lines', 'gravity']) assert.notEqual(on[k], on.base, k + ' reached the sim');
+  assert.notEqual(on.resets, on.lock, 'resets reached the sim (beyond the lock delay set with them)');
   assert.equal(on.gravity, off.gravity, 'gravity override is the same with or without the hook');
   const same = playRun({ seed: 1, tier: 5 });
   assert.equal(same.hash + ':' + same.frames + ':' + same.level, off.base, 'and the same as in this process');
@@ -410,7 +423,10 @@ function bestVsBoth({ heights, piece, lines, tapGap, planAhead }) {
 test("best: never shows its target later than hold or tap from the same frame, and picks each kind where it is faster", () => {
   const boards = [[0, 3, 3, 3, 3, 3, 3, 3, 3], [3, 3, 3, 3, 3, 3, 3, 3, 0], [0, 0, 2, 2, 2, 2, 2, 2, 2], [2, 2, 2, 2, 2, 2, 2, 0, 0], [2, 1, 2, 2, 2, 2, 2, 2, 2], [2, 2, 2, 2, 2, 2, 2, 1, 2]];
   let holdWins = 0, tapWins = 0, n = 0;
-  for (const tapGap of [4, 6]) for (const planAhead of [false, true]) for (const lines of [0, 152]) for (const heights of boards) for (const piece of ['BAR', 'PLUS']) {
+  // GAME_VERSION 3.0 (D119): was lines 0 and 152 (levels 1 and 20). A level 20 piece locks on its spawn frame, so
+  // a bot started at level 20 never sees a piece and never plans (not even ahead: it plans from a lock it saw a piece
+  // make). 144 is level 19, the fastest level a piece is on screen.
+  for (const tapGap of [4, 6]) for (const planAhead of [false, true]) for (const lines of [0, 144]) for (const heights of boards) for (const piece of ['BAR', 'PLUS']) {
     const r = bestVsBoth({ heights, piece, lines, tapGap, planAhead });
     const tag = `gap ${tapGap} plan ${planAhead} lines ${lines} ${piece} on ${heights} -> col ${r.tgt.tcol} by ${r.pick}`;
     assert.ok(r.best < Infinity, tag + ': best reached its target');
@@ -428,21 +444,24 @@ test('default output: --seeds 1-5 and --tiers --seeds 1-20 print exactly what w5
   const cli = args => spawnSync(process.execPath, ['tools/stacklight-bot.mjs', ...args], { cwd: root, encoding: 'utf8' });
   const a = cli(['--seeds', '1-5']);
   // GAME_VERSION 2.0 (D111, D113): re-pinned from the CLI on 2.0. 1.0 printed 60-minute runs (lightsout, ~13.9M);
-  // with no lock resets tier 9 tops out at level 19 to 20 in about 3.7 minutes
-  assert.equal(a.status, 1); // the level/frames band fails on 2.0 too (tops out above level 17, under 6 min)
+  // with no lock resets tier 9 tops out at level 19 to 20 in about 3.7 minutes.
+  // GAME_VERSION 3.0 (D119, D122): re-pinned from the CLI on 3.0. With instant lock tier 9 tops out at level 14 to
+  // 15 in about 2.8 minutes (2.0 printed level 19 to 20, 3.7 minutes, 369110 to 414190).
+  assert.equal(a.status, 1); // the level/frames band fails on 3.0 too (tops out under 6 min)
   assert.equal(a.stdout.split('\n').slice(0, 7).join('\n'), [
     'STACKLIGHT bot, tier 9 (reaction 12 frames, mistakes 0%), Free Play',
     'seed | level | frames | minutes | lines | score | end | pieces | skipped | missed | stateHash | band',
-    '   1 |    19 |  13340 |    3.71 |   147 | 369110 | topout |    377 |     225 |      7 | 0x7d4c7115 | out',
-    '   2 |    19 |  13445 |    3.73 |   148 | 381035 | topout |    379 |     242 |      6 | 0x204cd33e | out',
-    '   3 |    20 |  13532 |    3.76 |   152 | 414190 | topout |    380 |     173 |     15 | 0x691d2d8b | out',
-    '   4 |    19 |  13589 |    3.77 |   149 | 396870 | topout |    383 |     239 |      6 | 0x88074de5 | out',
-    '   5 |    20 |  13499 |    3.75 |   153 | 392685 | topout |    376 |     224 |     13 | 0xd37c5773 | out'].join('\n'));
+    '   1 |    15 |  10246 |    2.85 |   115 | 220370 | topout |    289 |      43 |      0 | 0x7e213536 | out',
+    '   2 |    14 |  10012 |    2.78 |   110 | 214950 | topout |    282 |      54 |      5 | 0x8ec2a49a | out',
+    '   3 |    15 |  10115 |    2.81 |   112 | 221030 | topout |    285 |      41 |      8 | 0x4fc3b712 | out',
+    '   4 |    15 |  10202 |    2.83 |   113 | 221030 | topout |    287 |      56 |      0 | 0xd1d5e808 | out',
+    '   5 |    15 |  10164 |    2.82 |   112 | 213950 | topout |    286 |      44 |      2 | 0xaf634cdf | out'].join('\n'));
   const sha = s => crypto.createHash('sha256').update(s).digest('hex');
-  assert.equal(sha(a.stdout), '9b36834bb0cc2e271e4b457b3806fb08bfed53dc04f7c3089bfb58399b476984', 'whole --seeds 1-5 stdout');
+  assert.equal(sha(a.stdout), '0648b80831eaffd4a75f7ad62acfc146a27a8592329438bc7f4bd074ae10faca', 'whole --seeds 1-5 stdout');
   const t = cli(['--tiers', '--seeds', '1-20']);
-  // Re-pinned (the lock timer no longer pauses in the air) from the CLI; the tier 9 rows above did not move
-  assert.equal(sha(t.stdout), 'd7b4c61f2e57d2c9ad617d6aca80ba83e5eaae879620c13ddd636985101e6ca5', 'whole --tiers --seeds 1-20 stdout');
+  // Re-pinned (the lock timer no longer pauses in the air) from the CLI; the tier 9 rows above did not move.
+  // Re-pinned on 3.0 (D119) from the CLI.
+  assert.equal(sha(t.stdout), '7943d07854b7cac82fbcb9c7f4034aa2abc0bb5d9fc06c28f14c5ac5f8d6e7da', 'whole --tiers --seeds 1-20 stdout');
   // and naming today's controller explicitly changes nothing
   assert.equal(cli(['--seeds', '1-5', '--move', 'hold', '--tap-gap', '4']).stdout, a.stdout);
 });

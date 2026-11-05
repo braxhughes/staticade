@@ -168,7 +168,8 @@ class StacklightSim {
   }
 
   // a successful move or turn while resting would restart the lock delay, at most LOCK_RESETS times per piece (B.6).
-  // LOCK_RESETS is 0 since 2.0 (D111), so this never fires: the delay runs from the first rest frame
+  // LOCK_RESETS is 0 since 2.0 (D111), so this never fires. Since 3.0 (D119) a piece can be resting at a move or turn
+  // only inside the frame it locks (it spawned onto the stack, or that frame's turn left it resting).
   moved(wasResting) {
     const S = this.ctx;
     if (wasResting && S.resets < LOCK_RESETS) { S.resets++; S.lockT = 0; }
@@ -282,14 +283,15 @@ class StacklightSim {
       S.sub += g;
       while (S.sub >= SUB_ROW && fits(grid, sh, S.px, S.py - 1)) { S.py--; S.sub -= SUB_ROW; }
     }
-    // lock delay (D117): it starts on the first frame the piece rests (that frame counts as 1) and from then on counts
-    // every frame, resting or not; it never pauses in the air. The piece locks on the first resting frame with the
-    // delay run out, so a piece that slides off a ledge after its time ran out locks on the frame it lands.
+    // lock (D119, GAME_VERSION 3.0): checked here, at the end of the frame, after this frame's turn, move and gravity.
+    // lockT counts resting frames from the first one (that frame counts as 1) and, once started, every frame after it
+    // (D117: it never pauses in the air). The piece locks on a resting frame with lockT > lockDelayFor(level). The delay
+    // is 0, so the piece locks on its first resting frame: the frame it touches down, or the frame it spawns resting.
     const rest = !fits(grid, sh, S.px, S.py - 1);
     if (rest) S.sub = 0;
     if (rest || S.lockT > 0) {
       S.lockT++;
-      if (rest && S.lockT >= lockDelayFor(S.level)) this.lock();
+      if (rest && S.lockT > lockDelayFor(S.level)) this.lock();
     }
     this.endFrame();
   }
